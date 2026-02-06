@@ -24,23 +24,9 @@
 
         // Export functions to global scope for React component to use
         window.Firebase = { 
-            initializeApp, 
-            getAuth, 
-            signInWithEmailAndPassword, 
-            signOut, 
-            onAuthStateChanged, 
-            setPersistence, 
-            browserLocalPersistence, 
-            getFirestore, 
-            doc, 
-            setDoc, 
-            onSnapshot, 
-            collection,
-            getStorage, 
-            ref, 
-            uploadBytes, 
-            getDownloadURL, 
-            deleteObject 
+            initializeApp, getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, 
+            getFirestore, doc, setDoc, onSnapshot, collection,
+            getStorage, ref, uploadBytes, getDownloadURL, deleteObject 
         };
     </script>
 
@@ -80,24 +66,16 @@
         const appId = 'rd-stage-gate-system';
         
         let db, auth, storage;
-        
-        // Initialize Firebase safely
-        const initFirebase = () => {
-            if (window.Firebase && !auth) {
-                try {
-                    const app = window.Firebase.initializeApp(firebaseConfig);
-                    auth = window.Firebase.getAuth(app);
-                    db = window.Firebase.getFirestore(app);
-                    storage = window.Firebase.getStorage(app);
-                    console.log("Firebase Initialized Successfully");
-                    return true;
-                } catch (e) {
-                    console.error("Firebase Init Error:", e);
-                    return false;
-                }
+        if (window.Firebase) {
+            try {
+                const app = window.Firebase.initializeApp(firebaseConfig);
+                auth = window.Firebase.getAuth(app);
+                db = window.Firebase.getFirestore(app);
+                storage = window.Firebase.getStorage(app);
+            } catch (e) {
+                console.error("Firebase Init Error:", e);
             }
-            return !!auth;
-        };
+        }
 
         // --- ICONS ---
         const IconBase = ({ children, ...props }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>{children}</svg>);
@@ -304,11 +282,12 @@
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
             const [projects, setProjects] = useState([]);
-            const [isUploading, setIsUploading] = useState(false);
+            // Loading State: changed from boolean to string (holds the key of the item being uploaded)
+            const [uploadingKey, setUploadingKey] = useState(null);
             
             // --- FIREBASE AUTH & DATA SYNC ---
             useEffect(() => {
-                if (!initFirebase()) return;
+                if (!auth) return;
                 
                 const unsubscribe = window.Firebase.onAuthStateChanged(auth, (currentUser) => {
                     // Check if current session is anonymous or has no email
@@ -444,7 +423,10 @@
                     // Storage Limit 10MB
                     if (file.size > 10 * 1024 * 1024) { alert("File too large: กรุณาแนบไฟล์ที่มีขนาดไม่เกิน 10MB"); return; }
                     
-                    setIsUploading(true);
+                    const target = { ...uploadTarget };
+                    const key = `gate${target.gate}_${target.idx}`;
+                    setUploadingKey(key); // Set uploading state for this specific item
+                    
                     const pid = activeProjectId;
                     const storageRef = window.Firebase.ref(storage, `attachments/${pid}/${Date.now()}_${file.name}`);
                     
@@ -460,15 +442,14 @@
                             storagePath: snapshot.metadata.fullPath 
                         };
                         
-                        const key = `gate${uploadTarget.gate}_${uploadTarget.idx}`;
                         const updated = projects.map(p => p.id === pid ? { ...p, attachments: { ...p.attachments, [key]: fileData } } : p);
                         setProjects(updated);
                         saveToCloud(updated);
-                        setIsUploading(false);
+                        setUploadingKey(null); // Clear loading state
                     }).catch((error) => {
                         console.error("Upload failed", error);
                         alert("Upload Error: " + error.message);
-                        setIsUploading(false);
+                        setUploadingKey(null); // Clear loading state
                     });
                 }
             };
@@ -640,7 +621,11 @@
 
             const ChecklistView = () => {
                 if (!activeProject) return null;
-                const filteredItems = gateData[selectedGate].items.filter(item => activeProject.type === 'both' || item.type === 'all' || item.type === activeProject.type);
+                // --- FIX: Robust Indexing to prevent shifting items during filter ---
+                const allItems = gateData[selectedGate].items;
+                // Add original index to each item before filtering
+                const itemsWithIndex = allItems.map((item, index) => ({...item, originalIndex: index}));
+                const filteredItems = itemsWithIndex.filter(item => activeProject.type === 'both' || item.type === 'all' || item.type === activeProject.type);
                 
                 const handleOpenFile = (attachment) => {
                     if (!attachment) return;
@@ -674,9 +659,14 @@
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b"><tr><th className="px-8 py-4 w-12 text-center">Status</th><th className="px-4 py-4">Requirement</th><th className="px-4 py-4 w-72">Evidence</th><th className="px-6 py-4 w-24 text-center">Attach</th></tr></thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {filteredItems.map((item, idx) => {
-                                        const key = `gate${selectedGate}_${idx}`, isChecked = activeProject.checklistData?.[key] || false, attachment = activeProject.attachments?.[key];
+                                    {filteredItems.map((item) => {
+                                        // Use originalIdx for key to ensure stability and correct mapping
+                                        const idx = item.originalIdx;
+                                        const key = `gate${selectedGate}_${idx}`;
+                                        const isChecked = activeProject.checklistData?.[key] || false;
+                                        const attachment = activeProject.attachments?.[key];
                                         const attachmentName = attachment?.name || (typeof attachment === 'string' ? attachment : "");
+                                        
                                         return (
                                             <tr key={idx} className={`group hover:bg-indigo-50/30 transition-all ${item.highlight ? 'bg-amber-50/40' : ''} ${isChecked ? 'opacity-60' : ''}`}>
                                                 <td className="px-8 py-6 text-center"><input type="checkbox" checked={isChecked} onChange={() => toggleCheck(selectedGate, idx)} className="w-6 h-6 rounded-lg border-2 border-slate-200 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all hover:scale-110" /></td>
@@ -694,7 +684,7 @@
                                                 <td className="px-6 py-6 text-center">
                                                     {attachmentName ? <button onClick={() => handleRemoveFile(selectedGate, idx)} className="text-red-400 hover:text-red-600 transition-colors p-2 rounded-lg hover:bg-red-50"><Trash2 size={20} /></button> : (
                                                         <button onClick={() => triggerFileUpload(selectedGate, idx)} className="relative group text-slate-300 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50">
-                                                            {isUploading ? <div className="loader"></div> : <CloudUpload size={20} />}
+                                                            {uploadingKey === key ? <div className="loader"></div> : <CloudUpload size={20} />}
                                                         </button>
                                                     )}
                                                 </td>
