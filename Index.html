@@ -269,7 +269,9 @@
             // --- FIREBASE AUTH & DATA SYNC ---
             useEffect(() => {
                 if (!auth) return;
-                return window.Firebase.onAuthStateChanged(auth, setUser);
+                // Removed automatic signInAnonymously to force manual login
+                const unsubscribe = window.Firebase.onAuthStateChanged(auth, setUser);
+                return unsubscribe;
             }, []);
 
             useEffect(() => {
