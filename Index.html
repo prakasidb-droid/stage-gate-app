@@ -44,7 +44,6 @@
         const { useState, useEffect, useRef } = React;
         
         // --- Firebase Config & Setup ---
-        // Config ของคุณ (จาก project-timeline-e25e8)
         const firebaseConfig = {
             apiKey: "AIzaSyAvcnSqaqsB91MZ62fwV9kufUiDd3mkRao",
             authDomain: "project-timeline-e25e8.firebaseapp.com",
@@ -113,7 +112,11 @@
                     await window.Firebase.signInWithEmailAndPassword(auth, email, password);
                 } catch (err) {
                     console.error(err);
-                    setError('Login Failed: ' + err.code);
+                    let errMsg = "Login failed";
+                    if (err.code === 'auth/invalid-credential') errMsg = "Invalid email or password";
+                    if (err.code === 'auth/user-not-found') errMsg = "User not found";
+                    if (err.code === 'auth/wrong-password') errMsg = "Wrong password";
+                    setError(errMsg);
                 } finally {
                     setLoading(false);
                 }
@@ -121,7 +124,7 @@
 
             return (
                 <div className="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-2xl">
+                    <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300">
                         <div className="text-center mb-8">
                             <div className="bg-indigo-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-indigo-600">
                                 <FlaskConical size={32} />
@@ -132,14 +135,14 @@
                         <form onSubmit={handleLogin} className="space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold" placeholder="name@example.com" required />
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800" placeholder="name@example.com" required />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
-                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold" placeholder="••••••••" required />
+                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800" placeholder="••••••••" required />
                             </div>
                             {error && <div className="text-red-500 text-xs font-bold bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
-                            <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50">
+                            <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-200">
                                 {loading ? 'Signing In...' : 'Sign In'}
                             </button>
                         </form>
@@ -269,8 +272,21 @@
             // --- FIREBASE AUTH & DATA SYNC ---
             useEffect(() => {
                 if (!auth) return;
-                // Removed automatic signInAnonymously to force manual login
-                const unsubscribe = window.Firebase.onAuthStateChanged(auth, setUser);
+                
+                // --- FIX FOR PERSISTENCE ISSUE ---
+                // Listen to auth state changes. If we detect an anonymous user (from old session), sign them out immediately.
+                const unsubscribe = window.Firebase.onAuthStateChanged(auth, (currentUser) => {
+                    if (currentUser && currentUser.isAnonymous) {
+                        // User is logged in anonymously from a previous session/version.
+                        // Sign them out to force the Email Login screen.
+                        console.log("Detected anonymous user from old session. Signing out...");
+                        window.Firebase.signOut(auth);
+                        setUser(null);
+                    } else {
+                        // User is either null (not logged in) or logged in via Email (valid).
+                        setUser(currentUser);
+                    }
+                });
                 return unsubscribe;
             }, []);
 
