@@ -282,7 +282,7 @@
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
             const [projects, setProjects] = useState([]);
-            // Loading State: changed from boolean to string (holds the key of the item being uploaded)
+            // Loading State: Stores ID of the specific item being uploaded
             const [uploadingKey, setUploadingKey] = useState(null);
             
             // --- FIREBASE AUTH & DATA SYNC ---
@@ -424,8 +424,9 @@
                     if (file.size > 10 * 1024 * 1024) { alert("File too large: กรุณาแนบไฟล์ที่มีขนาดไม่เกิน 10MB"); return; }
                     
                     const target = { ...uploadTarget };
+                    // --- Use specific key for loading state ---
                     const key = `gate${target.gate}_${target.idx}`;
-                    setUploadingKey(key); // Set uploading state for this specific item
+                    setUploadingKey(key); 
                     
                     const pid = activeProjectId;
                     const storageRef = window.Firebase.ref(storage, `attachments/${pid}/${Date.now()}_${file.name}`);
@@ -442,7 +443,9 @@
                             storagePath: snapshot.metadata.fullPath 
                         };
                         
-                        const updated = projects.map(p => p.id === pid ? { ...p, attachments: { ...p.attachments, [key]: fileData } } : p);
+                        // Update using the specific key from target (which is the original index)
+                        const dbKey = `gate${target.gate}_${target.idx}`;
+                        const updated = projects.map(p => p.id === pid ? { ...p, attachments: { ...p.attachments, [dbKey]: fileData } } : p);
                         setProjects(updated);
                         saveToCloud(updated);
                         setUploadingKey(null); // Clear loading state
