@@ -18,10 +18,10 @@
     <!-- Firebase SDK (Modular) -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
         import { getFirestore, doc, setDoc, onSnapshot, collection } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
-        window.Firebase = { initializeApp, getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, getFirestore, doc, setDoc, onSnapshot, collection };
+        window.Firebase = { initializeApp, getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, getFirestore, doc, setDoc, onSnapshot, collection };
     </script>
 
     <!-- Fonts -->
@@ -109,6 +109,8 @@
                 setLoading(true);
                 setError('');
                 try {
+                    // Set persistence to LOCAL so user stays logged in after refresh
+                    await window.Firebase.setPersistence(auth, window.Firebase.browserLocalPersistence);
                     await window.Firebase.signInWithEmailAndPassword(auth, email, password);
                 } catch (err) {
                     console.error(err);
@@ -273,17 +275,12 @@
             useEffect(() => {
                 if (!auth) return;
                 
-                // --- FIX FOR PERSISTENCE ISSUE ---
-                // Listen to auth state changes. If we detect an anonymous user (from old session), sign them out immediately.
                 const unsubscribe = window.Firebase.onAuthStateChanged(auth, (currentUser) => {
-                    if (currentUser && currentUser.isAnonymous) {
-                        // User is logged in anonymously from a previous session/version.
-                        // Sign them out to force the Email Login screen.
-                        console.log("Detected anonymous user from old session. Signing out...");
-                        window.Firebase.signOut(auth);
-                        setUser(null);
+                    // Force logout if anonymous or no email (cleans up old sessions)
+                    if (currentUser && (currentUser.isAnonymous || !currentUser.email)) {
+                        console.log("Cleaning up invalid session...");
+                        window.Firebase.signOut(auth).then(() => setUser(null));
                     } else {
-                        // User is either null (not logged in) or logged in via Email (valid).
                         setUser(currentUser);
                     }
                 });
