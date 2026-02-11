@@ -20,13 +20,12 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
         import { getFirestore, doc, setDoc, onSnapshot, collection } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-        import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js';
-
-        // Export functions to global scope
+        
+        // Storage is removed as we use links now, but keeping import structure clean
+        
         window.Firebase = { 
             initializeApp, getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, 
-            getFirestore, doc, setDoc, onSnapshot, collection,
-            getStorage, ref, uploadBytes, getDownloadURL, deleteObject 
+            getFirestore, doc, setDoc, onSnapshot, collection
         };
     </script>
 
@@ -41,18 +40,6 @@
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .animate-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
-        /* Spinner CSS */
-        .loader {
-            border: 2px solid #e2e8f0;
-            border-top: 2px solid #4f46e5;
-            border-radius: 50%;
-            width: 18px;
-            height: 18px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
@@ -74,13 +61,12 @@
 
         const appId = 'rd-stage-gate-system';
         
-        let db, auth, storage;
+        let db, auth;
         if (window.Firebase) {
             try {
                 const app = window.Firebase.initializeApp(firebaseConfig);
                 auth = window.Firebase.getAuth(app);
                 db = window.Firebase.getFirestore(app);
-                storage = window.Firebase.getStorage(app);
             } catch (e) {
                 console.error("Firebase Init Error:", e);
             }
@@ -94,7 +80,7 @@
         const BarChart3 = (props) => <IconBase {...props}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></IconBase>;
         const Plus = (props) => <IconBase {...props}><path d="M5 12h14"/><path d="M12 5v14"/></IconBase>;
         const ArrowRight = (props) => <IconBase {...props}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></IconBase>;
-        const Paperclip = (props) => <IconBase {...props}><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></IconBase>;
+        const LinkIcon = (props) => <IconBase {...props}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></IconBase>;
         const Save = (props) => <IconBase {...props}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconBase>;
         const ShieldAlert = (props) => <IconBase {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="M12 8v4"/><path d="M12 16h.01"/></IconBase>;
         const FlaskConical = (props) => <IconBase {...props}><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></IconBase>;
@@ -115,7 +101,6 @@
         const EyeOff = (props) => <IconBase {...props}><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></IconBase>;
         const ExternalLink = (props) => <IconBase {...props}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></IconBase>;
         const LogOut = (props) => <IconBase {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>;
-        const CloudUpload = (props) => <IconBase {...props}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></IconBase>;
 
         // --- LOGIN COMPONENT ---
         const LoginScreen = ({ onLogin }) => {
@@ -291,14 +276,8 @@
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
             const [projects, setProjects] = useState([]);
-            // ** FIXED: Changed from boolean to string (holds the ID of the uploading item) **
-            const [currentUploadId, setCurrentUploadId] = useState(null);
             
-            // Helper to generate consistent unique IDs
-            const getUploadId = (gate, index) => `gate-${gate}-item-${index}`;
-
-            // Use ref to store the target for the file input to avoid stale closures
-            const uploadTargetRef = useRef({ gate: null, idx: null, id: null });
+            const jsonImportRef = useRef(null);
             
             // --- FIREBASE AUTH & DATA SYNC ---
             useEffect(() => {
@@ -336,9 +315,6 @@
                     alert("บันทึกไม่สำเร็จ: " + e.message);
                 }
             };
-
-            const fileInputRef = useRef(null);
-            const jsonImportRef = useRef(null);
             
             const [newProject, setNewProject] = useState({
                 name: '', type: 'rd', owner: '', startDate: new Date().toISOString().split('T')[0],
@@ -404,65 +380,35 @@
                 setProjects(updated); saveToCloud(updated);
             };
 
-            const triggerFileUpload = (gateNum, itemIdx, uniqueId) => {
-                // Store the target info in Ref
-                uploadTargetRef.current = { gate: gateNum, idx: itemIdx, id: uniqueId };
-                if (fileInputRef.current) { 
-                    fileInputRef.current.value = ""; 
-                    fileInputRef.current.click(); 
-                }
-            };
+            // --- LINK ATTACHMENT LOGIC (NO UPLOAD) ---
+            const handleAttachLink = (gate, idx) => {
+                if (!activeProjectId) return;
+                
+                // 1. Prompt for Link
+                const link = prompt("กรุณาวางลิงก์ (URL) ของเอกสาร:", "https://");
+                if (!link || link === "https://" || link.trim() === "") return;
 
-            const handleFileSelected = (e) => {
-                if (e.target.files && e.target.files[0] && activeProjectId) {
-                    const file = e.target.files[0];
-                    if (file.size > 10 * 1024 * 1024) { alert("File too large: Max 10MB"); return; }
-                    
-                    const { gate, idx, id } = uploadTargetRef.current;
-                    
-                    if (!storage) {
-                        alert("ระบบ Storage ยังไม่พร้อมใช้งาน (กรุณาตรวจสอบว่าเปิดใช้งาน Firebase Storage หรือยัง)");
-                        return;
-                    }
+                // 2. Prompt for Name
+                const name = prompt("ระบุชื่อเอกสาร:", "เอกสารแนบ");
+                if (!name) return;
 
-                    // ** SET LOADING STATE FOR SPECIFIC ID **
-                    setCurrentUploadId(id); 
-                    
-                    const pid = activeProjectId;
-                    
-                    const storageRef = window.Firebase.ref(storage, `attachments/${pid}/${Date.now()}_${file.name}`);
-                    
-                    window.Firebase.uploadBytes(storageRef, file)
-                    .then((snapshot) => {
-                        return window.Firebase.getDownloadURL(snapshot.ref).then((downloadURL) => ({ snapshot, downloadURL }));
-                    })
-                    .then(({ snapshot, downloadURL }) => {
-                        const fileData = { 
-                            name: file.name, 
-                            url: downloadURL, 
-                            type: file.type, 
-                            size: file.size, 
-                            lastModified: file.lastModified,
-                            storagePath: snapshot.metadata.fullPath 
-                        };
-                        
-                        setProjects(prevProjects => {
-                            const dbKey = `gate${gate}_${idx}`; // Use correct DB key (gateNum_originalIdx)
-                            const updated = prevProjects.map(p => 
-                                p.id === pid ? { ...p, attachments: { ...p.attachments, [dbKey]: fileData } } : p
-                            );
-                            saveToCloud(updated); 
-                            return updated;
-                        });
-                        
-                        setCurrentUploadId(null);
-                    })
-                    .catch((error) => {
-                        console.error("Upload failed:", error);
-                        alert("Upload Error: " + error.message);
-                        setCurrentUploadId(null);
-                    });
-                }
+                const fileData = { 
+                    name: name, 
+                    url: link, 
+                    type: 'link', 
+                    size: 0, 
+                    lastModified: Date.now(),
+                    storagePath: null 
+                };
+
+                setProjects(prevProjects => {
+                    const dbKey = `gate${gate}_${idx}`;
+                    const updated = prevProjects.map(p => 
+                        p.id === activeProjectId ? { ...p, attachments: { ...p.attachments, [dbKey]: fileData } } : p
+                    );
+                    saveToCloud(updated); 
+                    return updated;
+                });
             };
 
             const handleRemoveFile = (gateNum, itemIdx) => {
@@ -663,19 +609,17 @@
                         <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
                             <div className="p-8 border-b border-slate-100 bg-white flex justify-between items-center"><div><h3 className="text-2xl font-black text-slate-900 italic tracking-tighter uppercase">{gateData[selectedGate].title}</h3><p className="text-slate-500 text-sm mt-1 font-medium italic">{gateData[selectedGate].desc}</p></div><div className="flex gap-2"><button className="flex items-center gap-2 bg-slate-50 text-slate-600 px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all border border-slate-200"><Save size={16} /> Save Progress</button><button className="flex items-center gap-2 bg-indigo-600 text-white px-7 py-2.5 rounded-xl text-xs font-black hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all uppercase tracking-widest">Submit Gate {selectedGate} <ArrowRight size={16} /></button></div></div>
                             <table className="w-full text-left">
-                                <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b"><tr><th className="px-8 py-4 w-12 text-center">Status</th><th className="px-4 py-4">Requirement</th><th className="px-4 py-4 w-72">Evidence</th><th className="px-6 py-4 w-24 text-center">Attach</th></tr></thead>
+                                <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b"><tr><th className="px-8 py-4 w-12 text-center">Status</th><th className="px-4 py-4">Requirement</th><th className="px-4 py-4 w-72">Evidence</th><th className="px-6 py-4 w-24 text-center">Link</th></tr></thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {filteredItems.map((item) => {
-                                        // ** FIX: ใช้ unique ID เป็น Key เพื่อระบุตัวตน **
                                         const idx = item.originalIdx;
-                                        const uniqueId = getUploadId(selectedGate, idx);
-                                        const dbKey = `gate${selectedGate}_${idx}`;
-                                        const isChecked = activeProject.checklistData?.[dbKey] || false;
-                                        const attachment = activeProject.attachments?.[dbKey];
+                                        const key = `gate${selectedGate}_${idx}`;
+                                        const isChecked = activeProject.checklistData?.[key] || false;
+                                        const attachment = activeProject.attachments?.[key];
                                         const attachmentName = attachment?.name || (typeof attachment === 'string' ? attachment : "");
                                         
                                         return (
-                                            <tr key={uniqueId} className={`group hover:bg-indigo-50/30 transition-all ${item.highlight ? 'bg-amber-50/40' : ''} ${isChecked ? 'opacity-60' : ''}`}>
+                                            <tr key={idx} className={`group hover:bg-indigo-50/30 transition-all ${item.highlight ? 'bg-amber-50/40' : ''} ${isChecked ? 'opacity-60' : ''}`}>
                                                 <td className="px-8 py-6 text-center"><input type="checkbox" checked={isChecked} onChange={() => toggleCheck(selectedGate, idx)} className="w-6 h-6 rounded-lg border-2 border-slate-200 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all hover:scale-110" /></td>
                                                 <td className="px-4 py-6">
                                                     <div className={`text-base font-bold tracking-tight transition-colors ${isChecked ? 'line-through text-slate-400' : 'text-slate-800'}`}>{item.label}</div>
@@ -690,17 +634,7 @@
                                                 </td>
                                                 <td className="px-6 py-6 text-center">
                                                     {attachmentName ? <button onClick={() => handleRemoveFile(selectedGate, idx)} className="text-red-400 hover:text-red-600 transition-colors p-2 rounded-lg hover:bg-red-50"><Trash2 size={20} /></button> : (
-                                                        <button 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation(); 
-                                                                triggerFileUpload(selectedGate, idx, uniqueId);
-                                                            }}
-                                                            disabled={!!currentUploadId} // Disable if any upload is in progress
-                                                            className={`relative group text-slate-300 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50 ${currentUploadId ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                        >
-                                                            {/* ** FIX: เช็ค currentUploadId กับ uniqueId ของตัวเอง ** */}
-                                                            {currentUploadId === uniqueId ? <div className="loader"></div> : <CloudUpload size={20} />}
-                                                        </button>
+                                                        <button onClick={() => handleAttachLink(selectedGate, idx)} className="relative group text-slate-300 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50"><LinkIcon size={20} /></button>
                                                     )}
                                                 </td>
                                             </tr>
@@ -726,7 +660,6 @@
                     </main>
                     {showNewProjectModal && <NewProjectModal isOpen={showNewProjectModal} onClose={() => setShowNewProjectModal(false)} newProject={newProject} setNewProject={setNewProject} onCreate={handleCreateProject} />}
                     {showTimelineAdjust && <TimelineAdjustmentModal isOpen={showTimelineAdjust} onClose={() => setShowTimelineAdjust(false)} project={activeProject} onUpdate={handleUpdateTimeline} />}
-                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelected} />
                     <input type="file" ref={jsonImportRef} className="hidden" accept=".json" onChange={handleImportData} />
                 </div>
             );
