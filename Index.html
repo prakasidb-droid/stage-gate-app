@@ -22,7 +22,7 @@
         import { getFirestore, doc, setDoc, onSnapshot, collection } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
         import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js';
 
-        // Export functions to global scope for React component to use
+        // Export functions to global scope
         window.Firebase = { 
             initializeApp, getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, 
             getFirestore, doc, setDoc, onSnapshot, collection,
@@ -41,8 +41,17 @@
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .animate-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        /* Loader for upload */
-        .loader { border: 2px solid #f3f3f3; border-top: 2px solid #4f46e5; border-radius: 50%; width: 14px; height: 14px; animation: spin 1s linear infinite; display: inline-block; }
+        
+        /* Spinner CSS */
+        .loader {
+            border: 2px solid #e2e8f0;
+            border-top: 2px solid #4f46e5;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
@@ -282,27 +291,23 @@
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
             const [projects, setProjects] = useState([]);
-            // ** FIXED: ใช้ string เก็บ ID ช่องที่กำลังโหลดแทน boolean **
-            const [uploadingKey, setUploadingKey] = useState(null);
+            // ** FIXED: Changed from boolean to string (holds the ID of the uploading item) **
+            const [currentUploadId, setCurrentUploadId] = useState(null);
+            
+            // Helper to generate consistent unique IDs
+            const getUploadId = (gate, index) => `gate-${gate}-item-${index}`;
+
+            // Use ref to store the target for the file input to avoid stale closures
+            const uploadTargetRef = useRef({ gate: null, idx: null, id: null });
             
             // --- FIREBASE AUTH & DATA SYNC ---
             useEffect(() => {
                 if (!auth) return;
                 
                 const unsubscribe = window.Firebase.onAuthStateChanged(auth, (currentUser) => {
-                    // Check if current session is anonymous or has no email
                     if (currentUser && (currentUser.isAnonymous || !currentUser.email)) {
-                        console.log("Found anonymous session. Forcing SignOut to require Email/Pass login.");
-                        window.Firebase.signOut(auth)
-                            .then(() => {
-                                setUser(null);
-                            })
-                            .catch((error) => {
-                                console.error("SignOut Error", error);
-                                setUser(null);
-                            });
+                        window.Firebase.signOut(auth).then(() => setUser(null)).catch(() => setUser(null));
                     } else {
-                        // User is authenticated with Email/Password or is null (logged out)
                         setUser(currentUser);
                     }
                 });
@@ -334,7 +339,6 @@
 
             const fileInputRef = useRef(null);
             const jsonImportRef = useRef(null);
-            const [uploadTarget, setUploadTarget] = useState({ gate: null, idx: null });
             
             const [newProject, setNewProject] = useState({
                 name: '', type: 'rd', owner: '', startDate: new Date().toISOString().split('T')[0],
@@ -361,23 +365,13 @@
                     checklistData: {}, attachments: {}, dateLogs: [], isVisible: true
                 };
                 const updated = [...projects, project];
-                setProjects(updated);
-                saveToCloud(updated);
+                setProjects(updated); saveToCloud(updated);
                 setNewProject({ name: '', type: 'rd', owner: '', startDate: new Date().toISOString().split('T')[0], gate1Date: '', gate2Date: '', gate3Date: '', gate4Date: '', projectStatus: 'Active' });
                 setShowNewProjectModal(false);
             };
 
-            const updateProjectStatus = (id, status) => {
-                const updated = projects.map(p => p.id === id ? { ...p, projectStatus: status } : p);
-                setProjects(updated);
-                saveToCloud(updated);
-            };
-
-            const toggleProjectVisibility = (id) => {
-                const updated = projects.map(p => p.id === id ? { ...p, isVisible: p.isVisible === false ? true : false } : p);
-                setProjects(updated);
-                saveToCloud(updated);
-            };
+            const updateProjectStatus = (id, status) => { const updated = projects.map(p => p.id === id ? { ...p, projectStatus: status } : p); setProjects(updated); saveToCloud(updated); };
+            const toggleProjectVisibility = (id) => { const updated = projects.map(p => p.id === id ? { ...p, isVisible: p.isVisible === false ? true : false } : p); setProjects(updated); saveToCloud(updated); };
 
             const handleUpdateTimeline = (projectId, gateNum, newDate, reason, newName) => {
                 const updated = projects.map(p => {
@@ -390,8 +384,7 @@
                     }
                     return p;
                 });
-                setProjects(updated);
-                saveToCloud(updated);
+                setProjects(updated); saveToCloud(updated);
             };
 
             const toggleCheck = (gateNum, itemIdx) => {
@@ -408,13 +401,16 @@
                     }
                     return p;
                 });
-                setProjects(updated);
-                saveToCloud(updated);
+                setProjects(updated); saveToCloud(updated);
             };
 
-            const triggerFileUpload = (gateNum, itemIdx) => {
-                setUploadTarget({ gate: gateNum, idx: itemIdx });
-                if (fileInputRef.current) { fileInputRef.current.value = ""; fileInputRef.current.click(); }
+            const triggerFileUpload = (gateNum, itemIdx, uniqueId) => {
+                // Store the target info in Ref
+                uploadTargetRef.current = { gate: gateNum, idx: itemIdx, id: uniqueId };
+                if (fileInputRef.current) { 
+                    fileInputRef.current.value = ""; 
+                    fileInputRef.current.click(); 
+                }
             };
 
             const handleFileSelected = (e) => {
@@ -422,67 +418,50 @@
                     const file = e.target.files[0];
                     if (file.size > 10 * 1024 * 1024) { alert("File too large: Max 10MB"); return; }
                     
-                    const target = { ...uploadTarget };
-                    const key = `gate${target.gate}_${target.idx}`;
+                    const { gate, idx, id } = uploadTargetRef.current;
                     
                     if (!storage) {
                         alert("ระบบ Storage ยังไม่พร้อมใช้งาน (กรุณาตรวจสอบว่าเปิดใช้งาน Firebase Storage หรือยัง)");
                         return;
                     }
 
-                    setUploadingKey(key); 
+                    // ** SET LOADING STATE FOR SPECIFIC ID **
+                    setCurrentUploadId(id); 
                     
                     const pid = activeProjectId;
                     
-                    // Wrap synchronous call in try-catch to prevent crash
-                    try {
-                        const storageRef = window.Firebase.ref(storage, `attachments/${pid}/${Date.now()}_${file.name}`);
+                    const storageRef = window.Firebase.ref(storage, `attachments/${pid}/${Date.now()}_${file.name}`);
+                    
+                    window.Firebase.uploadBytes(storageRef, file)
+                    .then((snapshot) => {
+                        return window.Firebase.getDownloadURL(snapshot.ref).then((downloadURL) => ({ snapshot, downloadURL }));
+                    })
+                    .then(({ snapshot, downloadURL }) => {
+                        const fileData = { 
+                            name: file.name, 
+                            url: downloadURL, 
+                            type: file.type, 
+                            size: file.size, 
+                            lastModified: file.lastModified,
+                            storagePath: snapshot.metadata.fullPath 
+                        };
                         
-                        window.Firebase.uploadBytes(storageRef, file)
-                        .then((snapshot) => {
-                            // Nesting getDownloadURL to keep access to 'snapshot'
-                            return window.Firebase.getDownloadURL(snapshot.ref).then((downloadURL) => {
-                                return { snapshot, downloadURL };
-                            });
-                        })
-                        .then(({ snapshot, downloadURL }) => {
-                            const fileData = { 
-                                name: file.name, 
-                                url: downloadURL, 
-                                type: file.type, 
-                                size: file.size, 
-                                lastModified: file.lastModified,
-                                storagePath: snapshot.metadata.fullPath 
-                            };
-                            
-                            // Use functional update for projects to ensure we have latest state
-                            setProjects(prevProjects => {
-                                const dbKey = `gate${target.gate}_${target.idx}`;
-                                const updated = prevProjects.map(p => 
-                                    p.id === pid ? { ...p, attachments: { ...p.attachments, [dbKey]: fileData } } : p
-                                );
-                                // Save to cloud immediately with the new data
-                                saveToCloud(updated); 
-                                return updated;
-                            });
-                            
-                            setUploadingKey(null);
-                        })
-                        .catch((error) => {
-                            console.error("Upload failed:", error);
-                            // Translate common errors
-                            let msg = error.message;
-                            if (error.code === 'storage/unauthorized') msg = "ไม่มีสิทธิ์อัปโหลด (ตรวจสอบ Rules ใน Firebase Storage)";
-                            if (error.code === 'storage/canceled') msg = "ยกเลิกการอัปโหลด";
-                            
-                            alert("เกิดข้อผิดพลาดในการอัปโหลด: " + msg);
-                            setUploadingKey(null);
+                        setProjects(prevProjects => {
+                            const dbKey = `gate${gate}_${idx}`; // Use correct DB key (gateNum_originalIdx)
+                            const updated = prevProjects.map(p => 
+                                p.id === pid ? { ...p, attachments: { ...p.attachments, [dbKey]: fileData } } : p
+                            );
+                            saveToCloud(updated); 
+                            return updated;
                         });
-                    } catch (syncError) {
-                        console.error("Sync Error:", syncError);
-                        alert("เกิดข้อผิดพลาดก่อนเริ่มอัปโหลด: " + syncError.message);
-                        setUploadingKey(null);
-                    }
+                        
+                        setCurrentUploadId(null);
+                    })
+                    .catch((error) => {
+                        console.error("Upload failed:", error);
+                        alert("Upload Error: " + error.message);
+                        setCurrentUploadId(null);
+                    });
                 }
             };
 
@@ -495,8 +474,7 @@
                     }
                     return p;
                 });
-                setProjects(updated);
-                saveToCloud(updated);
+                setProjects(updated); saveToCloud(updated);
             };
 
             const handleExportData = () => {
@@ -515,10 +493,7 @@
                 reader.onload = (event) => {
                     try {
                         const data = JSON.parse(event.target.result);
-                        if (Array.isArray(data)) {
-                            setProjects(data);
-                            saveToCloud(data);
-                        }
+                        if (Array.isArray(data)) { setProjects(data); saveToCloud(data); }
                     } catch (err) { alert("Error parsing JSON file."); }
                 };
                 reader.readAsText(file);
@@ -653,7 +628,7 @@
 
             const ChecklistView = () => {
                 if (!activeProject) return null;
-                // ** FIX: สร้าง Index ที่แท้จริงก่อน Filter เพื่อให้ Key ถูกต้องเสมอ **
+                // ** FIX: Robust Indexing to prevent shifting items during filter **
                 const allItems = gateData[selectedGate].items;
                 const itemsWithIndex = allItems.map((item, index) => ({...item, originalIdx: index}));
                 const filteredItems = itemsWithIndex.filter(item => activeProject.type === 'both' || item.type === 'all' || item.type === activeProject.type);
@@ -691,15 +666,16 @@
                                 <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b"><tr><th className="px-8 py-4 w-12 text-center">Status</th><th className="px-4 py-4">Requirement</th><th className="px-4 py-4 w-72">Evidence</th><th className="px-6 py-4 w-24 text-center">Attach</th></tr></thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {filteredItems.map((item) => {
-                                        // ** FIX: ใช้ originalIdx เป็น Key เพื่อให้ตรงกันเสมอ **
+                                        // ** FIX: ใช้ unique ID เป็น Key เพื่อระบุตัวตน **
                                         const idx = item.originalIdx;
-                                        const key = `gate${selectedGate}_${idx}`;
-                                        const isChecked = activeProject.checklistData?.[key] || false;
-                                        const attachment = activeProject.attachments?.[key];
+                                        const uniqueId = getUploadId(selectedGate, idx);
+                                        const dbKey = `gate${selectedGate}_${idx}`;
+                                        const isChecked = activeProject.checklistData?.[dbKey] || false;
+                                        const attachment = activeProject.attachments?.[dbKey];
                                         const attachmentName = attachment?.name || (typeof attachment === 'string' ? attachment : "");
                                         
                                         return (
-                                            <tr key={idx} className={`group hover:bg-indigo-50/30 transition-all ${item.highlight ? 'bg-amber-50/40' : ''} ${isChecked ? 'opacity-60' : ''}`}>
+                                            <tr key={uniqueId} className={`group hover:bg-indigo-50/30 transition-all ${item.highlight ? 'bg-amber-50/40' : ''} ${isChecked ? 'opacity-60' : ''}`}>
                                                 <td className="px-8 py-6 text-center"><input type="checkbox" checked={isChecked} onChange={() => toggleCheck(selectedGate, idx)} className="w-6 h-6 rounded-lg border-2 border-slate-200 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all hover:scale-110" /></td>
                                                 <td className="px-4 py-6">
                                                     <div className={`text-base font-bold tracking-tight transition-colors ${isChecked ? 'line-through text-slate-400' : 'text-slate-800'}`}>{item.label}</div>
@@ -714,9 +690,16 @@
                                                 </td>
                                                 <td className="px-6 py-6 text-center">
                                                     {attachmentName ? <button onClick={() => handleRemoveFile(selectedGate, idx)} className="text-red-400 hover:text-red-600 transition-colors p-2 rounded-lg hover:bg-red-50"><Trash2 size={20} /></button> : (
-                                                        <button onClick={() => triggerFileUpload(selectedGate, idx)} className="relative group text-slate-300 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50">
-                                                            {/* ** FIX: เช็ค uploadingKey แทน isUploading เพื่อหมุนแค่ปุ่มเดียว ** */}
-                                                            {uploadingKey === key ? <div className="loader"></div> : <CloudUpload size={20} />}
+                                                        <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation(); 
+                                                                triggerFileUpload(selectedGate, idx, uniqueId);
+                                                            }}
+                                                            disabled={!!currentUploadId} // Disable if any upload is in progress
+                                                            className={`relative group text-slate-300 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50 ${currentUploadId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {/* ** FIX: เช็ค currentUploadId กับ uniqueId ของตัวเอง ** */}
+                                                            {currentUploadId === uniqueId ? <div className="loader"></div> : <CloudUpload size={20} />}
                                                         </button>
                                                     )}
                                                 </td>
