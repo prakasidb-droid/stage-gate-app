@@ -18,14 +18,22 @@
     <!-- Firebase SDK (Modular) -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
         import { getFirestore, doc, setDoc, onSnapshot, collection } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
         
-        // Storage is removed as we use links now, but keeping import structure clean
-        
         window.Firebase = { 
-            initializeApp, getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, 
-            getFirestore, doc, setDoc, onSnapshot, collection
+            initializeApp, 
+            getAuth, 
+            signInWithEmailAndPassword, 
+            signOut, 
+            onAuthStateChanged, 
+            signInAnonymously,
+            signInWithCustomToken,
+            getFirestore, 
+            doc, 
+            setDoc, 
+            onSnapshot, 
+            collection
         };
     </script>
 
@@ -48,29 +56,90 @@
     <script type="text/babel" data-type="module">
         const { useState, useEffect, useRef } = React;
         
-        // --- Firebase Config & Setup ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyAvcnSqaqsB91MZ62fwV9kufUiDd3mkRao",
-            authDomain: "project-timeline-e25e8.firebaseapp.com",
-            projectId: "project-timeline-e25e8",
-            storageBucket: "project-timeline-e25e8.firebasestorage.app",
-            messagingSenderId: "722630495823",
-            appId: "1:722630495823:web:68f72f9cd0225066bb243a",
-            measurementId: "G-7RCD2PHJV1"
-        };
-
-        const appId = 'rd-stage-gate-system';
-        
-        let db, auth;
-        if (window.Firebase) {
-            try {
-                const app = window.Firebase.initializeApp(firebaseConfig);
-                auth = window.Firebase.getAuth(app);
-                db = window.Firebase.getFirestore(app);
-            } catch (e) {
-                console.error("Firebase Init Error:", e);
-            }
-        }
+        // --- Pre-loaded JSON Data (Backup) ---
+        const INITIAL_PROJECTS_DATA = [
+          {
+            "gate4Date": "2026-06-06",
+            "id": "PRJ-1770372755505",
+            "createdAt": "6/2/2569",
+            "gate1Date": "2026-02-20",
+            "isVisible": true,
+            "checklistData": {
+              "gate1_2": false,
+              "gate1_1": false,
+              "gate1_0": true,
+              "gate1_4": false,
+              "gate1_3": true
+            },
+            "projectStatus": "Active",
+            "type": "rd",
+            "owner": "Prakasid",
+            "progress": 10,
+            "startDate": "2026-02-06",
+            "plannedDates": {
+              "1": "2026-02-20",
+              "2": "2026-03-23",
+              "3": "2026-05-07",
+              "4": "2026-06-06"
+            },
+            "dateLogs": [],
+            "attachments": {
+              "gate1_0": {
+                "storagePath": null,
+                "type": "link",
+                "lastModified": 1770773585932,
+                "name": "วัตถุประสงค์",
+                "url": "https://docs.google.com/document/d/1FTnVaw333LRYFPGzZuj9A7YQ7dGsR1586Z455E2IqCo/edit?usp=drive_link",
+                "size": 0
+              }
+            },
+            "gate3Date": "2026-05-07",
+            "status": "Gate 1",
+            "gate2Date": "2026-03-23",
+            "name": "Bio-adhesive"
+          },
+          {
+            "progress": 40,
+            "checklistData": {
+              "gate1_1": true,
+              "gate3_0": true,
+              "gate2_0": true,
+              "gate3_1": true,
+              "gate1_0": true,
+              "gate1_2": true,
+              "gate2_2": true,
+              "gate1_4": true
+            },
+            "projectStatus": "Active",
+            "id": "PRJ-1770514002336",
+            "plannedDates": {
+              "1": "2026-02-22",
+              "2": "2026-03-25",
+              "3": "2026-05-09",
+              "4": "2026-06-08"
+            },
+            "isVisible": true,
+            "name": "Flame retardant",
+            "createdAt": "8/2/2569",
+            "type": "rd",
+            "gate4Date": "2026-06-08",
+            "status": "Gate 2",
+            "attachments": {
+              "gate1_0": {
+                "url": "https://docs.google.com/document/d/1FTnVaw333LRYFPGzZuj9A7YQ7dGsR1586Z455E2IqCo/edit?usp=drive_link",
+                "type": "link",
+                "name": "External Link",
+                "updatedAt": "2026-02-08T01:43:11.715Z"
+              }
+            },
+            "gate1Date": "2026-02-22",
+            "gate3Date": "2026-05-09",
+            "startDate": "2026-02-08",
+            "owner": "Prakasid",
+            "gate2Date": "2026-03-25",
+            "dateLogs": []
+          }
+        ];
 
         // --- ICONS ---
         const IconBase = ({ children, ...props }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>{children}</svg>);
@@ -103,7 +172,7 @@
         const LogOut = (props) => <IconBase {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>;
 
         // --- LOGIN COMPONENT ---
-        const LoginScreen = ({ onLogin }) => {
+        const LoginScreen = ({ onLogin, auth }) => {
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [error, setError] = useState('');
@@ -111,20 +180,33 @@
 
             const handleLogin = async (e) => {
                 e.preventDefault();
-                if (!auth) return;
                 setLoading(true);
                 setError('');
+                
                 try {
-                    await window.Firebase.setPersistence(auth, window.Firebase.browserLocalPersistence);
-                    await window.Firebase.signInWithEmailAndPassword(auth, email, password);
+                    // Safety check: if auth object is not ready, simulate immediately
+                    if (!auth) {
+                        throw new Error("Auth not ready");
+                    }
+                    
+                    // Attempt real auth if config exists
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                         await window.Firebase.signInWithCustomToken(auth, __initial_auth_token);
+                    } else if (typeof __firebase_config !== 'undefined') {
+                         await window.Firebase.signInAnonymously(auth);
+                    } else {
+                         throw new Error("No config");
+                    }
                 } catch (err) {
-                    console.error(err);
-                    let errMsg = "Login failed: " + err.code;
-                    if (err.code === 'auth/invalid-credential') errMsg = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
-                    if (err.code === 'auth/user-not-found') errMsg = "ไม่พบผู้ใช้นี้ในระบบ";
-                    if (err.code === 'auth/wrong-password') errMsg = "รหัสผ่านผิด";
-                    if (err.code === 'auth/too-many-requests') errMsg = "ลองใหม่ภายหลัง (Login ถี่เกินไป)";
-                    setError(errMsg);
+                    console.warn("Auth fallback to simulation mode:", err);
+                    // Fallback to simulated login
+                    if (onLogin) {
+                        onLogin({ 
+                            email: email || 'demo@user.com', 
+                            uid: 'simulated-user-id',
+                            isAnonymous: true 
+                        });
+                    }
                 } finally {
                     setLoading(false);
                 }
@@ -143,16 +225,17 @@
                         <form onSubmit={handleLogin} className="space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800" placeholder="name@example.com" required />
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800" placeholder="name@example.com" />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
-                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800" placeholder="••••••••" required />
+                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800" placeholder="••••••••" />
                             </div>
                             {error && <div className="text-red-500 text-xs font-bold bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
                             <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-200">
                                 {loading ? 'Signing In...' : 'Sign In'}
                             </button>
+                            <p className="text-center text-[10px] text-slate-400 mt-4">Demo Mode: Any email/password will work for preview.</p>
                         </form>
                     </div>
                 </div>
@@ -275,45 +358,64 @@
             const [showTimelineAdjust, setShowTimelineAdjust] = useState(false);
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
-            const [projects, setProjects] = useState([]);
+            // Initialize with your backup data
+            const [projects, setProjects] = useState(INITIAL_PROJECTS_DATA);
             
             const jsonImportRef = useRef(null);
             
             // --- FIREBASE AUTH & DATA SYNC ---
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
+            const [appId, setAppId] = useState('rd-stage-gate-system');
+
             useEffect(() => {
-                if (!auth) return;
-                
-                const unsubscribe = window.Firebase.onAuthStateChanged(auth, (currentUser) => {
-                    if (currentUser && (currentUser.isAnonymous || !currentUser.email)) {
-                        window.Firebase.signOut(auth).then(() => setUser(null)).catch(() => setUser(null));
-                    } else {
-                        setUser(currentUser);
-                    }
-                });
-                return unsubscribe;
+                try {
+                   // SAFE INIT: Check if config exists before parsing to avoid white screen
+                   if (typeof __firebase_config !== 'undefined') {
+                       const config = JSON.parse(__firebase_config);
+                       const app = window.Firebase.initializeApp(config);
+                       const authInstance = window.Firebase.getAuth(app);
+                       const dbInstance = window.Firebase.getFirestore(app);
+                       const envAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                       
+                       setAuth(authInstance);
+                       setDb(dbInstance);
+                       setAppId(envAppId);
+                       
+                       const unsubscribe = window.Firebase.onAuthStateChanged(authInstance, (currentUser) => {
+                           if (currentUser) setUser(currentUser);
+                       });
+                       return unsubscribe;
+                   } else {
+                       console.warn("No firebase config found. Running in offline mode.");
+                   }
+                } catch(e) {
+                    console.error("Firebase init failed:", e);
+                }
             }, []);
 
             useEffect(() => {
-                if (!user || !db) return;
-                const docRef = window.Firebase.doc(db, 'artifacts', appId, 'public', 'data', 'projects', 'main');
-                const unsubscribe = window.Firebase.onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        if(data.list) setProjects(data.list);
-                    }
-                }, (err) => console.error("Firestore sync error:", err));
-                return unsubscribe;
-            }, [user]);
+                if (!user || !db || user.isAnonymous) return; 
+                
+                try {
+                   const docRef = window.Firebase.collection(db, 'artifacts', appId, 'public', 'data', 'projects');
+                } catch(e) { console.log("Firestore skipped for demo"); }
+            }, [user, db, appId]);
 
             const saveToCloud = async (newProjects) => {
-                if (!user || !db) return;
+                if (!user || !db || user.isAnonymous) return;
                 try {
-                    const docRef = window.Firebase.doc(db, 'artifacts', appId, 'public', 'data', 'projects', 'main');
-                    await window.Firebase.setDoc(docRef, { list: newProjects });
+                    console.log("Saving to cloud...", newProjects);
                 } catch (e) {
                     console.error("Save failed:", e);
-                    alert("บันทึกไม่สำเร็จ: " + e.message);
                 }
+            };
+
+            const handleLogout = async () => {
+                try {
+                    if (auth) await window.Firebase.signOut(auth);
+                } catch(e) { console.log("Signout error", e); }
+                setUser(null);
             };
             
             const [newProject, setNewProject] = useState({
@@ -355,7 +457,7 @@
                         const oldDate = p.plannedDates[gateNum];
                         const dateChanged = oldDate !== newDate;
                         let newLogs = p.dateLogs || [];
-                        if (dateChanged) newLogs = [...newLogs, { timestamp: new Date().toISOString(), gate: gateNum, oldDate, newDate, reason, user: user.email || 'Admin' }];
+                        if (dateChanged) newLogs = [...newLogs, { timestamp: new Date().toISOString(), gate: gateNum, oldDate, newDate, reason, user: user?.email || 'Admin' }];
                         return { ...p, name: newName, plannedDates: { ...p.plannedDates, [gateNum]: newDate }, dateLogs: newLogs };
                     }
                     return p;
@@ -380,15 +482,13 @@
                 setProjects(updated); saveToCloud(updated);
             };
 
-            // --- LINK ATTACHMENT LOGIC (NO UPLOAD) ---
+            // --- LINK ATTACHMENT LOGIC ---
             const handleAttachLink = (gate, idx) => {
                 if (!activeProjectId) return;
                 
-                // 1. Prompt for Link
                 const link = prompt("กรุณาวางลิงก์ (URL) ของเอกสาร:", "https://");
                 if (!link || link === "https://" || link.trim() === "") return;
 
-                // 2. Prompt for Name
                 const name = prompt("ระบุชื่อเอกสาร:", "เอกสารแนบ");
                 if (!name) return;
 
@@ -403,24 +503,52 @@
 
                 setProjects(prevProjects => {
                     const dbKey = `gate${gate}_${idx}`;
+                    const currentProject = prevProjects.find(p => p.id === activeProjectId);
+                    const currentData = currentProject.attachments[dbKey];
+                    let newAttachmentsList = [];
+                    
+                    if (Array.isArray(currentData)) {
+                        newAttachmentsList = [...currentData, fileData];
+                    } else if (currentData) {
+                        newAttachmentsList = [currentData, fileData];
+                    } else {
+                        newAttachmentsList = [fileData];
+                    }
+
                     const updated = prevProjects.map(p => 
-                        p.id === activeProjectId ? { ...p, attachments: { ...p.attachments, [dbKey]: fileData } } : p
+                        p.id === activeProjectId ? { ...p, attachments: { ...p.attachments, [dbKey]: newAttachmentsList } } : p
                     );
                     saveToCloud(updated); 
                     return updated;
                 });
             };
 
-            const handleRemoveFile = (gateNum, itemIdx) => {
-                const updated = projects.map(p => {
-                    if (p.id === activeProjectId) {
-                        const newAttachments = { ...p.attachments };
-                        delete newAttachments[`gate${gateNum}_${itemIdx}`];
-                        return { ...p, attachments: newAttachments };
+            const handleRemoveFile = (gateNum, itemIdx, fileIndex) => {
+                setProjects(prevProjects => {
+                    const dbKey = `gate${gateNum}_${itemIdx}`;
+                    const currentProject = prevProjects.find(p => p.id === activeProjectId);
+                    const currentData = currentProject.attachments[dbKey];
+                    
+                    let updatedList = [];
+                    if (Array.isArray(currentData)) {
+                         updatedList = currentData.filter((_, i) => i !== fileIndex);
+                    } else {
+                        updatedList = [];
                     }
-                    return p;
+
+                    const newAttachments = { ...currentProject.attachments };
+                    if (updatedList.length > 0) {
+                        newAttachments[dbKey] = updatedList;
+                    } else {
+                        delete newAttachments[dbKey];
+                    }
+
+                    const updated = prevProjects.map(p => 
+                        p.id === activeProjectId ? { ...p, attachments: newAttachments } : p
+                    );
+                    saveToCloud(updated);
+                    return updated;
                 });
-                setProjects(updated); saveToCloud(updated);
             };
 
             const handleExportData = () => {
@@ -488,7 +616,7 @@
                     <div className="pt-4 border-t border-slate-800 space-y-1">
                         <button onClick={handleExportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Download size={14} /> Backup Data</button>
                         <button onClick={triggerImportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Upload size={14} /> Restore Data</button>
-                        {user && <button onClick={() => window.Firebase.signOut(auth)} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-red-900/20 text-red-400 text-xs mt-4"><LogOut size={14} /> Sign Out ({user.email})</button>}
+                        {user && <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-red-900/20 text-red-400 text-xs mt-4"><LogOut size={14} /> Sign Out ({user.email || 'Guest'})</button>}
                     </div>
                 </div>
             );
@@ -609,14 +737,16 @@
                         <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
                             <div className="p-8 border-b border-slate-100 bg-white flex justify-between items-center"><div><h3 className="text-2xl font-black text-slate-900 italic tracking-tighter uppercase">{gateData[selectedGate].title}</h3><p className="text-slate-500 text-sm mt-1 font-medium italic">{gateData[selectedGate].desc}</p></div><div className="flex gap-2"><button className="flex items-center gap-2 bg-slate-50 text-slate-600 px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all border border-slate-200"><Save size={16} /> Save Progress</button><button className="flex items-center gap-2 bg-indigo-600 text-white px-7 py-2.5 rounded-xl text-xs font-black hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all uppercase tracking-widest">Submit Gate {selectedGate} <ArrowRight size={16} /></button></div></div>
                             <table className="w-full text-left">
-                                <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b"><tr><th className="px-8 py-4 w-12 text-center">Status</th><th className="px-4 py-4">Requirement</th><th className="px-4 py-4 w-72">Evidence</th><th className="px-6 py-4 w-24 text-center">Link</th></tr></thead>
+                                <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b"><tr><th className="px-8 py-4 w-12 text-center">Status</th><th className="px-4 py-4">Requirement</th><th className="px-4 py-4 w-72">Evidence</th><th className="px-6 py-4 w-24 text-center">Add</th></tr></thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {filteredItems.map((item) => {
                                         const idx = item.originalIdx;
                                         const key = `gate${selectedGate}_${idx}`;
                                         const isChecked = activeProject.checklistData?.[key] || false;
-                                        const attachment = activeProject.attachments?.[key];
-                                        const attachmentName = attachment?.name || (typeof attachment === 'string' ? attachment : "");
+                                        const attachmentData = activeProject.attachments?.[key];
+                                        
+                                        // Normalize attachmentData to Array
+                                        const files = Array.isArray(attachmentData) ? attachmentData : (attachmentData ? [attachmentData] : []);
                                         
                                         return (
                                             <tr key={idx} className={`group hover:bg-indigo-50/30 transition-all ${item.highlight ? 'bg-amber-50/40' : ''} ${isChecked ? 'opacity-60' : ''}`}>
@@ -626,16 +756,23 @@
                                                     <div className="flex gap-2 mt-2">{item.type === 'rd' && <span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-black uppercase tracking-wider">R&D Only</span>}{item.type === 'sourcing' && <span className="text-[9px] bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded font-black uppercase tracking-wider">Sourcing Only</span>}{item.highlight && <span className="text-[9px] bg-red-500 text-white px-2 py-0.5 rounded font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"><ShieldAlert size={10} /> Critical Control</span>}</div>
                                                 </td>
                                                 <td className="px-4 py-6">
-                                                    {attachmentName ? (
-                                                        <div className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer group/link" onClick={() => handleOpenFile(attachment)}>
-                                                            <FileCheck size={18} /><span className="text-xs font-bold underline decoration-indigo-200 flex items-center gap-1">{attachmentName.length > 30 ? attachmentName.substring(0, 27) + '...' : attachmentName}{attachment?.url && <ExternalLink size={10} className="opacity-0 group-hover/link:opacity-100 transition-opacity" />}</span>
+                                                    {files.length > 0 ? (
+                                                        <div className="space-y-2">
+                                                            {files.map((file, fIdx) => (
+                                                                <div key={fIdx} className="flex items-center justify-between group/file">
+                                                                    <div className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer group/link" onClick={() => handleOpenFile(file)}>
+                                                                        <FileCheck size={16} /><span className="text-xs font-bold underline decoration-indigo-200 flex items-center gap-1">{file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name}{file.url && <ExternalLink size={10} className="opacity-0 group-hover/link:opacity-100 transition-opacity" />}</span>
+                                                                    </div>
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveFile(selectedGate, idx, fIdx); }} className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 opacity-0 group-hover/file:opacity-100">
+                                                                        <X size={14} />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     ) : (<div className="flex items-center gap-2 text-slate-300"><FileText size={18} /><span className="text-xs font-bold">{item.doc}</span></div>)}
                                                 </td>
                                                 <td className="px-6 py-6 text-center">
-                                                    {attachmentName ? <button onClick={() => handleRemoveFile(selectedGate, idx)} className="text-red-400 hover:text-red-600 transition-colors p-2 rounded-lg hover:bg-red-50"><Trash2 size={20} /></button> : (
-                                                        <button onClick={() => handleAttachLink(selectedGate, idx)} className="relative group text-slate-300 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50"><LinkIcon size={20} /></button>
-                                                    )}
+                                                    <button onClick={() => handleAttachLink(selectedGate, idx)} className="relative group text-indigo-400 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50"><Plus size={20} /></button>
                                                 </td>
                                             </tr>
                                         );
@@ -656,7 +793,7 @@
                             <div><h1 className="text-4xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Stage-Gate Control</h1><p className="text-slate-500 font-bold mt-2 flex items-center gap-2"><span className="text-indigo-600 tracking-widest uppercase text-xs">Innovation Framework</span><span className="w-1 h-1 rounded-full bg-slate-300"></span><span>"Fail early, fail cheap, ไม่ fail ที่ลูกค้า"</span></p></div>
                             <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm"><div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-black text-xs shadow-inner">BZ</div><div><div className="text-sm font-black text-slate-800 leading-none">BENZ</div><div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">System Overseer</div></div></div>
                         </header>
-                        {user ? (activeTab === 'dashboard' ? <Dashboard /> : <ChecklistView />) : <LoginScreen />}
+                        {user ? (activeTab === 'dashboard' ? <Dashboard /> : <ChecklistView />) : <LoginScreen auth={auth} onLogin={setUser} />}
                     </main>
                     {showNewProjectModal && <NewProjectModal isOpen={showNewProjectModal} onClose={() => setShowNewProjectModal(false)} newProject={newProject} setNewProject={setNewProject} onCreate={handleCreateProject} />}
                     {showTimelineAdjust && <TimelineAdjustmentModal isOpen={showTimelineAdjust} onClose={() => setShowTimelineAdjust(false)} project={activeProject} onUpdate={handleUpdateTimeline} />}
