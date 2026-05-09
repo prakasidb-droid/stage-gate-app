@@ -20,9 +20,17 @@ service cloud.firestore {
       return role() in ['editor', 'admin'];
     }
 
-    match /artifacts/{appId}/public/data/projects/{docId} {
-      allow read: if canReadProjects();
-      allow write: if canWriteProjects();
+    function isAllTeamsAdmin() {
+      return role() == 'admin' && request.auth.token.allTeams == true;
+    }
+
+    function isTeamMember(teamId) {
+      return signedIn() && request.auth.token.teamId == teamId;
+    }
+
+    match /teams/{teamId}/projects/{docId} {
+      allow read: if isAllTeamsAdmin() || (isTeamMember(teamId) && canReadProjects());
+      allow write: if isAllTeamsAdmin() || (isTeamMember(teamId) && canWriteProjects());
     }
   }
 }

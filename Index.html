@@ -359,6 +359,10 @@
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
             const [userRole, setUserRole] = useState('unassigned');
+            const [userTeamId, setUserTeamId] = useState('');
+            const [canAccessAllTeams, setCanAccessAllTeams] = useState(false);
+            const [selectedTeamId, setSelectedTeamId] = useState('main');
+            const [adminTeamInput, setAdminTeamInput] = useState('main');
             // Initialize with your backup data
             const [projects, setProjects] = useState(INITIAL_PROJECTS_DATA);
             
@@ -368,6 +372,7 @@
             const [db, setDb] = useState(null);
             const [auth, setAuth] = useState(null);
             const [appId, setAppId] = useState(appDataId);
+            const canEdit = userRole === 'editor' || userRole === 'admin';
 
             useEffect(() => {
                 try {
@@ -384,8 +389,18 @@
                        if (currentUser) {
                            const token = await currentUser.getIdTokenResult(true);
                            setUserRole(token.claims.role || 'unassigned');
+                           const claimTeamId = token.claims.teamId || 'main';
+                           const claimAllTeams = token.claims.allTeams === true;
+                           setUserTeamId(claimTeamId);
+                           setCanAccessAllTeams(claimAllTeams);
+                           setSelectedTeamId(claimAllTeams ? selectedTeamId : claimTeamId);
+                           setAdminTeamInput(claimAllTeams ? selectedTeamId : claimTeamId);
                        } else {
                            setUserRole('unassigned');
+                           setUserTeamId('');
+                           setCanAccessAllTeams(false);
+                           setSelectedTeamId('main');
+                           setAdminTeamInput('main');
                        }
                    });
                    return unsubscribe;
@@ -395,27 +410,29 @@
             }, []);
 
             useEffect(() => {
-                if (!user || !db) return;
-                const docRef = window.Firebase.doc(db, 'artifacts', appId, 'public', 'data', 'projects', 'main');
+                if (!user || !db || !selectedTeamId) return;
+                const docRef = window.Firebase.doc(db, 'teams', selectedTeamId, 'projects', 'main');
                 const unsubscribe = window.Firebase.onSnapshot(docRef, async (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         if (Array.isArray(data.list)) setProjects(data.list);
+                    } else if (canEdit) {
+                        await window.Firebase.setDoc(docRef, { list: INITIAL_PROJECTS_DATA, teamId: selectedTeamId, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
                     } else {
-                        await window.Firebase.setDoc(docRef, { list: INITIAL_PROJECTS_DATA, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
+                        setProjects([]);
                     }
                 }, (err) => {
                     console.error("Firestore sync error:", err);
                     alert("Cannot sync project data from Firebase: " + err.message);
                 });
                 return unsubscribe;
-            }, [user, db, appId]);
+            }, [user, db, selectedTeamId, canEdit]);
 
             const saveToCloud = async (newProjects) => {
-                if (!user || !db) return;
+                if (!user || !db || !selectedTeamId) return;
                 try {
-                    const docRef = window.Firebase.doc(db, 'artifacts', appId, 'public', 'data', 'projects', 'main');
-                    await window.Firebase.setDoc(docRef, { list: newProjects, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
+                    const docRef = window.Firebase.doc(db, 'teams', selectedTeamId, 'projects', 'main');
+                    await window.Firebase.setDoc(docRef, { list: newProjects, teamId: selectedTeamId, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
                 } catch (e) {
                     console.error("Save failed:", e);
                     alert("Save failed: " + e.message);
@@ -443,11 +460,19 @@
             }, [newProject.startDate]);
 
             const activeProject = projects.find(p => p.id === activeProjectId);
-            const canEdit = userRole === 'editor' || userRole === 'admin';
+            const activeTeamLabel = canAccessAllTeams ? selectedTeamId : userTeamId;
             const requireEditAccess = () => {
                 if (canEdit) return true;
                 alert("This account is read-only. Please contact an admin if you need edit access.");
                 return false;
+            };
+            const switchAdminTeam = () => {
+                if (!canAccessAllTeams) return;
+                const nextTeamId = adminTeamInput.trim().toLowerCase();
+                if (!nextTeamId) return;
+                setSelectedTeamId(nextTeamId);
+                setActiveProjectId(null);
+                setActiveTab('dashboard');
             };
 
             const handleCreateProject = () => {
@@ -702,7 +727,8 @@
                         <button onClick={() => setActiveTab('projectLog')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'projectLog' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}><History size={20} /> Project Log</button>
                     </nav>
                     <div className="pt-4 border-t border-slate-800 space-y-1">
-                        {user && <div className={`mx-4 mb-3 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border ${canEdit ? 'bg-green-500/10 text-green-300 border-green-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{userRole} access</div>}
+                        {user && <div className={`mx-4 mb-3 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border ${canEdit ? 'bg-green-500/10 text-green-300 border-green-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{userRole} access<div className="mt-1 text-[9px] text-slate-400 normal-case tracking-normal">Team: {activeTeamLabel || '-'}</div></div>}
+                        {canAccessAllTeams && <div className="mx-4 mb-3 space-y-2"><label className="block text-[9px] font-black uppercase tracking-widest text-slate-500">Admin Team</label><div className="flex gap-1"><input value={adminTeamInput} onChange={(e) => setAdminTeamInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') switchAdminTeam(); }} className="min-w-0 flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-indigo-500" placeholder="team-a" /><button onClick={switchAdminTeam} className="px-2 py-1.5 rounded-lg bg-indigo-600 text-white text-[10px] font-black uppercase">Go</button></div></div>}
                         <button onClick={handleExportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Download size={14} /> Backup Data</button>
                         {canEdit && <button onClick={triggerImportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Upload size={14} /> Restore Data</button>}
                         {user && <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-red-900/20 text-red-400 text-xs mt-4"><LogOut size={14} /> Sign Out ({user.email || 'Guest'})</button>}
