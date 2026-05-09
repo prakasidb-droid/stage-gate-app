@@ -475,10 +475,20 @@
                     return;
                 }
 
+                const closeReasonOptions = ['Win', 'Loss', 'Hold', 'Test'];
+                const reasonChoice = prompt(`Select close reason for "${activeProject.name}"\n1. Win\n2. Loss\n3. Hold\n4. Test`, '1');
+                if (reasonChoice === null) return;
+                const closeReason = closeReasonOptions[Number(reasonChoice.trim()) - 1] || closeReasonOptions.find(reason => reason.toLowerCase() === reasonChoice.trim().toLowerCase());
+                if (!closeReason) {
+                    alert("Invalid close reason. Please enter 1, 2, 3, 4 or Win/Loss/Hold/Test.");
+                    return;
+                }
+
                 const updated = projects.map(p => p.id === activeProject.id ? {
                     ...p,
                     projectStatus: 'Closed',
                     isVisible: false,
+                    closeReason,
                     closedAt: new Date().toISOString(),
                     closedBy: user?.email || 'Guest'
                 } : p);
@@ -731,6 +741,13 @@
                     return new Date(dateStr).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
                 };
 
+                const reasonClass = (reason) => ({
+                    Win: 'bg-green-50 text-green-700 border-green-200',
+                    Loss: 'bg-red-50 text-red-700 border-red-200',
+                    Hold: 'bg-amber-50 text-amber-700 border-amber-200',
+                    Test: 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                }[reason] || 'bg-slate-50 text-slate-500 border-slate-200');
+
                 return (
                     <div className="space-y-6 animate-in fade-in duration-500">
                         <div className="flex justify-between items-center">
@@ -739,13 +756,14 @@
                         </div>
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden overflow-x-auto">
                             <table className="w-full text-left">
-                                <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-widest border-b"><tr><th className="px-6 py-4">Project</th><th className="px-6 py-4">Closed At</th><th className="px-6 py-4">Closed By</th><th className="px-6 py-4">Final Stage</th><th className="px-6 py-4">Progress</th><th className="px-6 py-4 text-right">Action</th></tr></thead>
+                                <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-widest border-b"><tr><th className="px-6 py-4">Project</th><th className="px-6 py-4">Reason</th><th className="px-6 py-4">Closed At</th><th className="px-6 py-4">Closed By</th><th className="px-6 py-4">Final Stage</th><th className="px-6 py-4">Progress</th><th className="px-6 py-4 text-right">Action</th></tr></thead>
                                 <tbody className="divide-y divide-slate-50">
                                     {closedProjects.length === 0 ? (
-                                        <tr><td colSpan="6" className="px-6 py-12 text-center text-sm font-bold text-slate-400">No closed projects yet.</td></tr>
+                                        <tr><td colSpan="7" className="px-6 py-12 text-center text-sm font-bold text-slate-400">No closed projects yet.</td></tr>
                                     ) : closedProjects.map((p) => (
                                         <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                                             <td className="px-6 py-5"><div className="font-bold text-slate-900">{p.name}</div><div className="text-[10px] text-slate-400 uppercase">{p.id}</div></td>
+                                            <td className="px-6 py-5"><span className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider ${reasonClass(p.closeReason)}`}>{p.closeReason || '-'}</span></td>
                                             <td className="px-6 py-5 text-xs font-bold text-slate-600">{formatClosedAt(p.closedAt)}</td>
                                             <td className="px-6 py-5 text-xs font-bold text-slate-600">{p.closedBy || '-'}</td>
                                             <td className="px-6 py-5"><span className="px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-wider">{p.status}</span></td>
