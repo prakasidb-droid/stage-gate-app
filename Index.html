@@ -461,6 +461,15 @@
 
             const activeProject = projects.find(p => p.id === activeProjectId);
             const activeTeamLabel = canAccessAllTeams ? selectedTeamId : userTeamId;
+            useEffect(() => {
+                if (activeProjectId && !activeProject) {
+                    setActiveProjectId(null);
+                    setActiveTab('dashboard');
+                } else if (activeTab === 'checklist' && !activeProjectId) {
+                    setActiveTab('dashboard');
+                }
+            }, [activeProject, activeProjectId, activeTab]);
+
             const requireEditAccess = () => {
                 if (canEdit) return true;
                 alert("This account is read-only. Please contact an admin if you need edit access.");
@@ -721,7 +730,7 @@
                     <div className="flex items-center gap-2 mb-10 px-2"><div className="bg-indigo-500 p-2 rounded-lg"><FlaskConical size={24} /></div><span className="font-bold text-xl tracking-tight uppercase italic">R&D Matrix</span></div>
                     <nav className="space-y-1 flex-1">
                         <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}><BarChart3 size={20} /> Project Dashboard</button>
-                        <button onClick={() => { activeProjectId && setActiveTab('checklist') }} disabled={!activeProjectId} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'checklist' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'} ${!activeProjectId ? 'opacity-50' : ''}`}><CheckCircle2 size={20} /> Gate Checklist</button>
+                        <button onClick={() => { activeProjectId && setActiveTab('checklist') }} disabled={!activeProjectId} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'checklist' && activeProjectId ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'} ${!activeProjectId ? 'opacity-50' : ''}`}><CheckCircle2 size={20} /> Gate Checklist</button>
                         <button onClick={() => setActiveTab('projectLog')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'projectLog' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}><History size={20} /> Project Log</button>
                     </nav>
                     <div className="pt-4 border-t border-slate-800 space-y-1">
