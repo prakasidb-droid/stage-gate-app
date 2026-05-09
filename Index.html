@@ -190,22 +190,26 @@
                     }
                     
                     // Attempt real auth if config exists
+                    let authenticatedUser = null;
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                         await window.Firebase.signInWithCustomToken(auth, __initial_auth_token);
+                         const credential = await window.Firebase.signInWithCustomToken(auth, __initial_auth_token);
+                         authenticatedUser = credential.user;
                     } else if (typeof __firebase_config !== 'undefined') {
-                         await window.Firebase.signInAnonymously(auth);
+                         const credential = await window.Firebase.signInAnonymously(auth);
+                         authenticatedUser = credential.user;
                     } else {
                          throw new Error("No config");
                     }
+                    if (onLogin && authenticatedUser) onLogin(authenticatedUser, password);
                 } catch (err) {
                     console.warn("Auth fallback to simulation mode:", err);
                     // Fallback to simulated login
                     if (onLogin) {
-                        onLogin({ 
-                            email: email || 'demo@user.com', 
+                        onLogin({
+                            email: email || 'demo@user.com',
                             uid: 'simulated-user-id',
-                            isAnonymous: true 
-                        });
+                            isAnonymous: true
+                        }, password);
                     }
                 } finally {
                     setLoading(false);
@@ -358,6 +362,7 @@
             const [showTimelineAdjust, setShowTimelineAdjust] = useState(false);
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
+            const [sessionPassword, setSessionPassword] = useState('');
             // Initialize with your backup data
             const [projects, setProjects] = useState(INITIAL_PROJECTS_DATA);
             
@@ -416,6 +421,12 @@
                     if (auth) await window.Firebase.signOut(auth);
                 } catch(e) { console.log("Signout error", e); }
                 setUser(null);
+                setSessionPassword('');
+            };
+
+            const handleLogin = (loggedUser, password) => {
+                setUser(loggedUser);
+                setSessionPassword(password || '');
             };
             
             const [newProject, setNewProject] = useState({
@@ -450,6 +461,32 @@
 
             const updateProjectStatus = (id, status) => { const updated = projects.map(p => p.id === id ? { ...p, projectStatus: status } : p); setProjects(updated); saveToCloud(updated); };
             const toggleProjectVisibility = (id) => { const updated = projects.map(p => p.id === id ? { ...p, isVisible: p.isVisible === false ? true : false } : p); setProjects(updated); saveToCloud(updated); };
+
+            const handleCloseProject = () => {
+                if (!activeProject) return;
+                if (!sessionPassword) {
+                    alert("Cannot close project because this login session has no password recorded. Please sign out and sign in again with a password.");
+                    return;
+                }
+                const password = prompt(`Enter password to close "${activeProject.name}"`);
+                if (password === null) return;
+                if (password !== sessionPassword) {
+                    alert("Incorrect password. Project was not closed.");
+                    return;
+                }
+
+                const updated = projects.map(p => p.id === activeProject.id ? {
+                    ...p,
+                    projectStatus: 'Closed',
+                    isVisible: false,
+                    closedAt: new Date().toISOString(),
+                    closedBy: user?.email || 'Guest'
+                } : p);
+                setProjects(updated);
+                saveToCloud(updated);
+                setActiveProjectId(null);
+                setActiveTab('projectLog');
+            };
 
             const handleUpdateTimeline = (projectId, gateNum, newDate, reason, newName) => {
                 const updated = projects.map(p => {
@@ -635,6 +672,7 @@
                     <nav className="space-y-1 flex-1">
                         <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}><BarChart3 size={20} /> Project Dashboard</button>
                         <button onClick={() => { activeProjectId && setActiveTab('checklist') }} disabled={!activeProjectId} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'checklist' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'} ${!activeProjectId ? 'opacity-50' : ''}`}><CheckCircle2 size={20} /> Gate Checklist</button>
+                        <button onClick={() => setActiveTab('projectLog')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'projectLog' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}><History size={20} /> Project Log</button>
                     </nav>
                     <div className="pt-4 border-t border-slate-800 space-y-1">
                         <button onClick={handleExportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Download size={14} /> Backup Data</button>
@@ -645,7 +683,8 @@
             );
 
             const Dashboard = () => {
-                const filteredProjects = projects.filter(p => showHidden ? true : p.isVisible !== false);
+                const activeProjects = projects.filter(p => p.projectStatus !== 'Closed');
+                const filteredProjects = activeProjects.filter(p => showHidden ? true : p.isVisible !== false);
                 return (
                     <div className="space-y-6 animate-in fade-in duration-500">
                         <div className="flex justify-between items-center">
@@ -656,8 +695,8 @@
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p className="text-slate-400 text-xs font-bold uppercase">Active Projects</p><p className="text-3xl font-black text-slate-900 mt-2">{projects.filter(p => (p.projectStatus || 'Active') === 'Active').length}</p></div>
-                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-amber-500"><p className="text-slate-400 text-xs font-bold uppercase">Avg. Progress</p><p className="text-3xl font-black text-slate-900 mt-2">{projects.length > 0 ? Math.round(projects.reduce((a, b) => a + b.progress, 0) / projects.length) : 0}%</p></div>
+                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p className="text-slate-400 text-xs font-bold uppercase">Active Projects</p><p className="text-3xl font-black text-slate-900 mt-2">{activeProjects.filter(p => (p.projectStatus || 'Active') === 'Active').length}</p></div>
+                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-amber-500"><p className="text-slate-400 text-xs font-bold uppercase">Avg. Progress</p><p className="text-3xl font-black text-slate-900 mt-2">{activeProjects.length > 0 ? Math.round(activeProjects.reduce((a, b) => a + b.progress, 0) / activeProjects.length) : 0}%</p></div>
                             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-indigo-500"><p className="text-slate-400 text-xs font-bold uppercase">Status</p><p className="text-3xl font-black text-green-500 mt-2">Ready</p></div>
                         </div>
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden overflow-x-auto">
@@ -673,6 +712,45 @@
                                             <td className="px-6 py-5 text-sm font-semibold">{p.status}</td>
                                             <td className="px-6 py-5"><div className="w-24 bg-slate-100 rounded-full h-1.5 mb-1"><div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${p.progress}%` }}></div></div><span className="text-[9px] font-bold text-slate-400 uppercase">{p.progress}% Complete</span></td>
                                             <td className="px-6 py-5 text-right"><button onClick={() => { setActiveProjectId(p.id); setActiveTab('checklist'); }} className="text-indigo-600 font-bold text-sm bg-white border px-3 py-1.5 rounded-lg hover:border-indigo-600 transition-all">Manage</button></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
+
+            const ProjectLog = () => {
+                const closedProjects = projects
+                    .filter(p => p.projectStatus === 'Closed')
+                    .sort((a, b) => new Date(b.closedAt || 0) - new Date(a.closedAt || 0));
+
+                const formatClosedAt = (dateStr) => {
+                    if (!dateStr) return '-';
+                    return new Date(dateStr).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+                };
+
+                return (
+                    <div className="space-y-6 animate-in fade-in duration-500">
+                        <div className="flex justify-between items-center">
+                            <div><h2 className="text-2xl font-bold text-slate-800 tracking-tight">Project Log</h2><p className="text-slate-500 text-sm">Closed project history and audit trail</p></div>
+                            <div className="bg-white border border-slate-200 rounded-2xl px-5 py-3 shadow-sm"><div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Closed</div><div className="text-2xl font-black text-slate-900 leading-none mt-1">{closedProjects.length}</div></div>
+                        </div>
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-widest border-b"><tr><th className="px-6 py-4">Project</th><th className="px-6 py-4">Closed At</th><th className="px-6 py-4">Closed By</th><th className="px-6 py-4">Final Stage</th><th className="px-6 py-4">Progress</th><th className="px-6 py-4 text-right">Action</th></tr></thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {closedProjects.length === 0 ? (
+                                        <tr><td colSpan="6" className="px-6 py-12 text-center text-sm font-bold text-slate-400">No closed projects yet.</td></tr>
+                                    ) : closedProjects.map((p) => (
+                                        <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                                            <td className="px-6 py-5"><div className="font-bold text-slate-900">{p.name}</div><div className="text-[10px] text-slate-400 uppercase">{p.id}</div></td>
+                                            <td className="px-6 py-5 text-xs font-bold text-slate-600">{formatClosedAt(p.closedAt)}</td>
+                                            <td className="px-6 py-5 text-xs font-bold text-slate-600">{p.closedBy || '-'}</td>
+                                            <td className="px-6 py-5"><span className="px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-wider">{p.status}</span></td>
+                                            <td className="px-6 py-5"><div className="w-24 bg-slate-100 rounded-full h-1.5 mb-1"><div className="bg-slate-500 h-1.5 rounded-full" style={{ width: `${p.progress}%` }}></div></div><span className="text-[9px] font-bold text-slate-400 uppercase">{p.progress}% Complete</span></td>
+                                            <td className="px-6 py-5 text-right"><button onClick={() => { setActiveProjectId(p.id); setActiveTab('checklist'); }} className="text-indigo-600 font-bold text-sm bg-white border px-3 py-1.5 rounded-lg hover:border-indigo-600 transition-all">View</button></td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -746,7 +824,11 @@
                     <div className="max-w-5xl mx-auto space-y-6 pb-20 animate-in slide-in-from-right-4 duration-500">
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                             <div className="flex items-center gap-4"><div className="p-3 bg-indigo-50 rounded-xl text-indigo-600 shadow-inner"><FlaskConical size={24} /></div><div><h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">{activeProject.name}</h2><div className="flex items-center gap-2 mt-0.5"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activeProject.id}</span><span className="w-1 h-1 rounded-full bg-slate-300"></span><span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{activeProject.type} Track</span></div></div></div>
-                            <button onClick={() => setActiveTab('dashboard')} className="text-slate-400 hover:text-slate-600 text-sm font-bold flex items-center gap-1 transition-colors group"><X size={16} className="group-hover:rotate-90 transition-transform"/> Close Project</button>
+                            {activeProject.projectStatus === 'Closed' ? (
+                                <button onClick={() => setActiveTab('projectLog')} className="text-slate-400 hover:text-slate-600 text-sm font-bold flex items-center gap-1 transition-colors group"><X size={16} className="group-hover:rotate-90 transition-transform"/> Back to Log</button>
+                            ) : (
+                                <button onClick={handleCloseProject} className="text-slate-400 hover:text-red-500 text-sm font-bold flex items-center gap-1 transition-colors group"><X size={16} className="group-hover:rotate-90 transition-transform"/> Close Project</button>
+                            )}
                         </div>
                         <TimelineWidget project={activeProject} />
                         <div className="flex gap-2">
@@ -820,7 +902,7 @@
                             <div><h1 className="text-4xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Stage-Gate Control</h1><p className="text-slate-500 font-bold mt-2 flex items-center gap-2"><span className="text-indigo-600 tracking-widest uppercase text-xs">Innovation Framework</span><span className="w-1 h-1 rounded-full bg-slate-300"></span><span>"Fail early, fail cheap, ไม่ fail ที่ลูกค้า"</span></p></div>
                             <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm"><div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-black text-xs shadow-inner">BZ</div><div><div className="text-sm font-black text-slate-800 leading-none">BENZ</div><div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">System Overseer</div></div></div>
                         </header>
-                        {user ? (activeTab === 'dashboard' ? <Dashboard /> : <ChecklistView />) : <LoginScreen auth={auth} onLogin={setUser} />}
+                        {user ? (activeTab === 'dashboard' ? <Dashboard /> : activeTab === 'projectLog' ? <ProjectLog /> : <ChecklistView />) : <LoginScreen auth={auth} onLogin={handleLogin} />}
                     </main>
                     {showNewProjectModal && <NewProjectModal isOpen={showNewProjectModal} onClose={() => setShowNewProjectModal(false)} newProject={newProject} setNewProject={setNewProject} onCreate={handleCreateProject} />}
                     {showTimelineAdjust && <TimelineAdjustmentModal isOpen={showTimelineAdjust} onClose={() => setShowTimelineAdjust(false)} project={activeProject} onUpdate={handleUpdateTimeline} />}
