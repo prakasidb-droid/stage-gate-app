@@ -409,12 +409,14 @@
 
             useEffect(() => {
                 if (!user || !db || !selectedTeamId) return;
+                setProjects(EMPTY_PROJECTS_DATA);
                 const docRef = window.Firebase.doc(db, 'teams', selectedTeamId, 'projects', 'main');
                 const unsubscribe = window.Firebase.onSnapshot(docRef, async (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         if (Array.isArray(data.list)) setProjects(data.list);
                     } else if (canEdit) {
+                        setProjects(EMPTY_PROJECTS_DATA);
                         await window.Firebase.setDoc(docRef, { list: EMPTY_PROJECTS_DATA, teamId: selectedTeamId, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
                     } else {
                         setProjects([]);
