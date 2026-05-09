@@ -358,6 +358,7 @@
             const [showTimelineAdjust, setShowTimelineAdjust] = useState(false);
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
+            const [userRole, setUserRole] = useState('unassigned');
             // Initialize with your backup data
             const [projects, setProjects] = useState(INITIAL_PROJECTS_DATA);
             
@@ -378,8 +379,14 @@
                    setDb(dbInstance);
                    setAppId(appDataId);
 
-                   const unsubscribe = window.Firebase.onAuthStateChanged(authInstance, (currentUser) => {
+                   const unsubscribe = window.Firebase.onAuthStateChanged(authInstance, async (currentUser) => {
                        setUser(currentUser);
+                       if (currentUser) {
+                           const token = await currentUser.getIdTokenResult(true);
+                           setUserRole(token.claims.role || 'unassigned');
+                       } else {
+                           setUserRole('unassigned');
+                       }
                    });
                    return unsubscribe;
                 } catch(e) {
@@ -436,8 +443,15 @@
             }, [newProject.startDate]);
 
             const activeProject = projects.find(p => p.id === activeProjectId);
+            const canEdit = userRole === 'editor' || userRole === 'admin';
+            const requireEditAccess = () => {
+                if (canEdit) return true;
+                alert("This account is read-only. Please contact an admin if you need edit access.");
+                return false;
+            };
 
             const handleCreateProject = () => {
+                if (!requireEditAccess()) return;
                 if (!newProject.name) return;
                 const project = {
                     ...newProject,
@@ -452,10 +466,11 @@
                 setShowNewProjectModal(false);
             };
 
-            const updateProjectStatus = (id, status) => { const updated = projects.map(p => p.id === id ? { ...p, projectStatus: status } : p); setProjects(updated); saveToCloud(updated); };
-            const toggleProjectVisibility = (id) => { const updated = projects.map(p => p.id === id ? { ...p, isVisible: p.isVisible === false ? true : false } : p); setProjects(updated); saveToCloud(updated); };
+            const updateProjectStatus = (id, status) => { if (!requireEditAccess()) return; const updated = projects.map(p => p.id === id ? { ...p, projectStatus: status } : p); setProjects(updated); saveToCloud(updated); };
+            const toggleProjectVisibility = (id) => { if (!requireEditAccess()) return; const updated = projects.map(p => p.id === id ? { ...p, isVisible: p.isVisible === false ? true : false } : p); setProjects(updated); saveToCloud(updated); };
 
             const handleCloseProject = async () => {
+                if (!requireEditAccess()) return;
                 if (!activeProject) return;
                 if (!auth || !user?.email) {
                     alert("Cannot verify password. Please sign out and sign in again.");
@@ -495,6 +510,7 @@
             };
 
             const handleUpdateTimeline = (projectId, gateNum, newDate, reason, newName) => {
+                if (!requireEditAccess()) return;
                 const updated = projects.map(p => {
                     if (p.id === projectId) {
                         const oldDate = p.plannedDates[gateNum];
@@ -509,6 +525,7 @@
             };
 
             const toggleCheck = (gateNum, itemIdx) => {
+                if (!requireEditAccess()) return;
                 if (!activeProjectId) return;
                 const updated = projects.map(p => {
                     if (p.id === activeProjectId) {
@@ -527,6 +544,7 @@
 
             // --- LINK ATTACHMENT LOGIC ---
             const handleAttachLink = (gate, idx) => {
+                if (!requireEditAccess()) return;
                 if (!activeProjectId) return;
                 
                 const link = prompt("กรุณาวางลิงก์ (URL) ของเอกสาร:", "https://");
@@ -567,6 +585,7 @@
             };
 
             const handleRemoveFile = (gateNum, itemIdx, fileIndex) => {
+                if (!requireEditAccess()) return;
                 setProjects(prevProjects => {
                     const dbKey = `gate${gateNum}_${itemIdx}`;
                     const currentProject = prevProjects.find(p => p.id === activeProjectId);
@@ -595,6 +614,7 @@
             };
 
             const handleRenameRequirement = (gateNum, itemIdx, defaultLabel) => {
+                if (!requireEditAccess()) return;
                 if (!activeProjectId) return;
                 const key = `gate${gateNum}_${itemIdx}`;
                 const currentLabel = activeProject?.requirementLabels?.[key] || defaultLabel;
@@ -627,6 +647,7 @@
 
             const triggerImportData = () => jsonImportRef.current && jsonImportRef.current.click();
             const handleImportData = (e) => {
+                if (!requireEditAccess()) { e.target.value = ''; return; }
                 const file = e.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
@@ -681,8 +702,9 @@
                         <button onClick={() => setActiveTab('projectLog')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'projectLog' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}><History size={20} /> Project Log</button>
                     </nav>
                     <div className="pt-4 border-t border-slate-800 space-y-1">
+                        {user && <div className={`mx-4 mb-3 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border ${canEdit ? 'bg-green-500/10 text-green-300 border-green-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{userRole} access</div>}
                         <button onClick={handleExportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Download size={14} /> Backup Data</button>
-                        <button onClick={triggerImportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Upload size={14} /> Restore Data</button>
+                        {canEdit && <button onClick={triggerImportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Upload size={14} /> Restore Data</button>}
                         {user && <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-red-900/20 text-red-400 text-xs mt-4"><LogOut size={14} /> Sign Out ({user.email || 'Guest'})</button>}
                     </div>
                 </div>
@@ -697,7 +719,7 @@
                             <div><h2 className="text-2xl font-bold text-slate-800 tracking-tight">Project Overview</h2><p className="text-slate-500 text-sm">จัดการและติดตามสถานะโครงการทั้งหมด (Cloud Sync)</p></div>
                             <div className="flex gap-3">
                                 <button onClick={() => setShowHidden(!showHidden)} className={`px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 border-2 transition-all text-xs uppercase tracking-widest ${showHidden ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50' : 'bg-indigo-50 border-indigo-200 text-indigo-600'}`}>{showHidden ? <Eye size={18}/> : <EyeOff size={18}/>} {showHidden ? 'All Projects' : 'Visible Only'}</button>
-                                <button onClick={() => setShowNewProjectModal(true)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-md"><Plus size={20} /> New Project</button>
+                                {canEdit && <button onClick={() => setShowNewProjectModal(true)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-md"><Plus size={20} /> New Project</button>}
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -711,9 +733,9 @@
                                 <tbody className="divide-y divide-slate-50">
                                     {filteredProjects.map((p) => (
                                         <tr key={p.id} className={`hover:bg-slate-50/80 transition-colors ${activeProjectId === p.id ? 'bg-indigo-50/40' : ''} ${p.isVisible === false ? 'opacity-50 grayscale' : ''}`}>
-                                            <td className="px-6 py-5"><button onClick={() => toggleProjectVisibility(p.id)} className={`p-2 rounded-lg transition-all ${p.isVisible !== false ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{p.isVisible !== false ? <Eye size={18} /> : <EyeOff size={18} />}</button></td>
+                                            <td className="px-6 py-5"><button onClick={() => toggleProjectVisibility(p.id)} disabled={!canEdit} className={`p-2 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed ${p.isVisible !== false ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{p.isVisible !== false ? <Eye size={18} /> : <EyeOff size={18} />}</button></td>
                                             <td className="px-6 py-5"><div className="font-bold text-slate-900">{p.name}</div><div className="text-[10px] text-slate-400 uppercase">{p.id}</div></td>
-                                            <td className="px-6 py-5"><div className="relative w-32"><select value={p.projectStatus || 'Active'} onChange={(e) => updateProjectStatus(p.id, e.target.value)} className={`appearance-none pl-8 pr-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border-2 w-full cursor-pointer ${(p.projectStatus === 'Active' || !p.projectStatus) ? 'bg-green-50 text-green-700 border-green-200' : p.projectStatus === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}><option value="Active">Active</option><option value="Pending">Pending</option><option value="Cancel">Cancel</option></select><div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">{(p.projectStatus === 'Active' || !p.projectStatus) && <PlayCircle size={12} className="text-green-600" />}{p.projectStatus === 'Pending' && <PauseCircle size={12} className="text-amber-600" />}{p.projectStatus === 'Cancel' && <StopCircle size={12} className="text-slate-400" />}</div></div></td>
+                                            <td className="px-6 py-5"><div className="relative w-32"><select value={p.projectStatus || 'Active'} onChange={(e) => updateProjectStatus(p.id, e.target.value)} disabled={!canEdit} className={`appearance-none pl-8 pr-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border-2 w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-70 ${(p.projectStatus === 'Active' || !p.projectStatus) ? 'bg-green-50 text-green-700 border-green-200' : p.projectStatus === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}><option value="Active">Active</option><option value="Pending">Pending</option><option value="Cancel">Cancel</option></select><div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">{(p.projectStatus === 'Active' || !p.projectStatus) && <PlayCircle size={12} className="text-green-600" />}{p.projectStatus === 'Pending' && <PauseCircle size={12} className="text-amber-600" />}{p.projectStatus === 'Cancel' && <StopCircle size={12} className="text-slate-400" />}</div></div></td>
                                             <td className="px-6 py-5"><div className="text-xs font-bold text-slate-700 flex items-center gap-1"><Flag size={12} className="text-indigo-500" />{new Date(p.plannedDates[4]).toLocaleDateString('th-TH', { month: 'short', year: 'numeric' })}</div></td>
                                             <td className="px-6 py-5 text-sm font-semibold">{p.status}</td>
                                             <td className="px-6 py-5"><div className="w-24 bg-slate-100 rounded-full h-1.5 mb-1"><div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${p.progress}%` }}></div></div><span className="text-[9px] font-bold text-slate-400 uppercase">{p.progress}% Complete</span></td>
@@ -789,7 +811,7 @@
                             <div className="flex gap-4">
                                 <div className="flex items-center gap-1 text-[10px] font-bold text-green-600 uppercase tracking-tighter"><div className="w-2 h-2 rounded-full bg-green-500"></div> Actual: {actualPct}%</div>
                                 <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 uppercase tracking-tighter"><div className="w-2 h-2 rounded-full bg-red-500"></div> Time: {Math.round(timePct)}%</div>
-                                <button onClick={() => setShowTimelineAdjust(true)} className="flex items-center gap-1 text-[10px] font-bold bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full border border-indigo-100 hover:bg-indigo-100 transition-colors uppercase"><Edit size={10} /> Adjust Plan</button>
+                                {canEdit && <button onClick={() => setShowTimelineAdjust(true)} className="flex items-center gap-1 text-[10px] font-bold bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full border border-indigo-100 hover:bg-indigo-100 transition-colors uppercase"><Edit size={10} /> Adjust Plan</button>}
                             </div>
                         </div>
                         <div className="relative h-24 mt-2 mx-4">
@@ -840,9 +862,9 @@
                             <div className="flex items-center gap-4"><div className="p-3 bg-indigo-50 rounded-xl text-indigo-600 shadow-inner"><FlaskConical size={24} /></div><div><h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">{activeProject.name}</h2><div className="flex items-center gap-2 mt-0.5"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activeProject.id}</span><span className="w-1 h-1 rounded-full bg-slate-300"></span><span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{activeProject.type} Track</span></div></div></div>
                             {activeProject.projectStatus === 'Closed' ? (
                                 <button onClick={() => setActiveTab('projectLog')} className="text-slate-400 hover:text-slate-600 text-sm font-bold flex items-center gap-1 transition-colors group"><X size={16} className="group-hover:rotate-90 transition-transform"/> Back to Log</button>
-                            ) : (
+                            ) : canEdit ? (
                                 <button onClick={handleCloseProject} className="text-slate-400 hover:text-red-500 text-sm font-bold flex items-center gap-1 transition-colors group"><X size={16} className="group-hover:rotate-90 transition-transform"/> Close Project</button>
-                            )}
+                            ) : <span className="text-slate-400 text-sm font-bold">Read Only</span>}
                         </div>
                         <TimelineWidget project={activeProject} />
                         <div className="flex gap-2">
@@ -854,7 +876,7 @@
                             ))}
                         </div>
                         <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
-                            <div className="p-8 border-b border-slate-100 bg-white flex justify-between items-center"><div><h3 className="text-2xl font-black text-slate-900 italic tracking-tighter uppercase">{gateData[selectedGate].title}</h3><p className="text-slate-500 text-sm mt-1 font-medium italic">{gateData[selectedGate].desc}</p></div><div className="flex gap-2"><button className="flex items-center gap-2 bg-slate-50 text-slate-600 px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all border border-slate-200"><Save size={16} /> Save Progress</button><button className="flex items-center gap-2 bg-indigo-600 text-white px-7 py-2.5 rounded-xl text-xs font-black hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all uppercase tracking-widest">Submit Gate {selectedGate} <ArrowRight size={16} /></button></div></div>
+                            <div className="p-8 border-b border-slate-100 bg-white flex justify-between items-center"><div><h3 className="text-2xl font-black text-slate-900 italic tracking-tighter uppercase">{gateData[selectedGate].title}</h3><p className="text-slate-500 text-sm mt-1 font-medium italic">{gateData[selectedGate].desc}</p></div>{canEdit && <div className="flex gap-2"><button className="flex items-center gap-2 bg-slate-50 text-slate-600 px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all border border-slate-200"><Save size={16} /> Save Progress</button><button className="flex items-center gap-2 bg-indigo-600 text-white px-7 py-2.5 rounded-xl text-xs font-black hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all uppercase tracking-widest">Submit Gate {selectedGate} <ArrowRight size={16} /></button></div>}</div>
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b"><tr><th className="px-8 py-4 w-12 text-center">Status</th><th className="px-4 py-4">Requirement</th><th className="px-4 py-4 w-72">Evidence</th><th className="px-6 py-4 w-24 text-center">Add</th></tr></thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -870,11 +892,11 @@
                                         
                                         return (
                                             <tr key={idx} className={`group hover:bg-indigo-50/30 transition-all ${item.highlight ? 'bg-amber-50/40' : ''} ${isChecked ? 'opacity-60' : ''}`}>
-                                                <td className="px-8 py-6 text-center"><input type="checkbox" checked={isChecked} onChange={() => toggleCheck(selectedGate, idx)} className="w-6 h-6 rounded-lg border-2 border-slate-200 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all hover:scale-110" /></td>
+                                                <td className="px-8 py-6 text-center"><input type="checkbox" checked={isChecked} onChange={() => toggleCheck(selectedGate, idx)} disabled={!canEdit} className="w-6 h-6 rounded-lg border-2 border-slate-200 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all hover:scale-110 disabled:cursor-not-allowed disabled:opacity-50" /></td>
                                                 <td className="px-4 py-6">
                                                     <div className="flex items-start gap-2">
                                                         <div className={`text-base font-bold tracking-tight transition-colors flex-1 ${isChecked ? 'line-through text-slate-400' : 'text-slate-800'}`}>{requirementLabel}</div>
-                                                        <button onClick={() => handleRenameRequirement(selectedGate, idx, item.label)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-indigo-600 transition-all p-1 rounded-lg hover:bg-indigo-50" title="Edit requirement name"><Edit size={15} /></button>
+                                                        {canEdit && <button onClick={() => handleRenameRequirement(selectedGate, idx, item.label)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-indigo-600 transition-all p-1 rounded-lg hover:bg-indigo-50" title="Edit requirement name"><Edit size={15} /></button>}
                                                     </div>
                                                     <div className="flex gap-2 mt-2">{item.type === 'rd' && <span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-black uppercase tracking-wider">R&D Only</span>}{item.type === 'sourcing' && <span className="text-[9px] bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded font-black uppercase tracking-wider">Sourcing Only</span>}{item.highlight && <span className="text-[9px] bg-red-500 text-white px-2 py-0.5 rounded font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"><ShieldAlert size={10} /> Critical Control</span>}</div>
                                                 </td>
@@ -886,16 +908,16 @@
                                                                     <div className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer group/link" onClick={() => handleOpenFile(file)}>
                                                                         <FileCheck size={16} /><span className="text-xs font-bold underline decoration-indigo-200 flex items-center gap-1">{file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name}{file.url && <ExternalLink size={10} className="opacity-0 group-hover/link:opacity-100 transition-opacity" />}</span>
                                                                     </div>
-                                                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveFile(selectedGate, idx, fIdx); }} className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 opacity-0 group-hover/file:opacity-100">
+                                                                    {canEdit && <button onClick={(e) => { e.stopPropagation(); handleRemoveFile(selectedGate, idx, fIdx); }} className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 opacity-0 group-hover/file:opacity-100">
                                                                         <X size={14} />
-                                                                    </button>
+                                                                    </button>}
                                                                 </div>
                                                             ))}
                                                         </div>
                                                     ) : (<div className="flex items-center gap-2 text-slate-300"><FileText size={18} /><span className="text-xs font-bold">{item.doc}</span></div>)}
                                                 </td>
                                                 <td className="px-6 py-6 text-center">
-                                                    <button onClick={() => handleAttachLink(selectedGate, idx)} className="relative group text-indigo-400 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50"><Plus size={20} /></button>
+                                                    {canEdit ? <button onClick={() => handleAttachLink(selectedGate, idx)} className="relative group text-indigo-400 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-indigo-50"><Plus size={20} /></button> : <span className="text-slate-300 text-xs font-bold">View</span>}
                                                 </td>
                                             </tr>
                                         );
