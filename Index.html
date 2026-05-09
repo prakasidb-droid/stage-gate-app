@@ -65,7 +65,8 @@
             measurementId: "G-7RCD2PHJV1"
         };
         const appDataId = 'rd-stage-gate-system';
-        const TEAM_OPTIONS = ['main', 'team', 'team-a', 'team-b', 'team-c'];
+        const TEAM_OPTIONS = ['main', 'team-a', 'team-b', 'team-c'];
+        const EMPTY_PROJECTS_DATA = [];
 
         // --- Pre-loaded JSON Data (Backup) ---
         const INITIAL_PROJECTS_DATA = [
@@ -363,8 +364,7 @@
             const [userTeamId, setUserTeamId] = useState('');
             const [canAccessAllTeams, setCanAccessAllTeams] = useState(false);
             const [selectedTeamId, setSelectedTeamId] = useState('main');
-            // Initialize with your backup data
-            const [projects, setProjects] = useState(INITIAL_PROJECTS_DATA);
+            const [projects, setProjects] = useState(EMPTY_PROJECTS_DATA);
             
             const jsonImportRef = useRef(null);
             
@@ -415,7 +415,7 @@
                         const data = docSnap.data();
                         if (Array.isArray(data.list)) setProjects(data.list);
                     } else if (canEdit) {
-                        await window.Firebase.setDoc(docRef, { list: INITIAL_PROJECTS_DATA, teamId: selectedTeamId, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
+                        await window.Firebase.setDoc(docRef, { list: EMPTY_PROJECTS_DATA, teamId: selectedTeamId, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
                     } else {
                         setProjects([]);
                     }
