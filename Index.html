@@ -18,22 +18,21 @@
     <!-- Firebase SDK (Modular) -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, doc, setDoc, onSnapshot, collection } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, doc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
         
-        window.Firebase = { 
-            initializeApp, 
-            getAuth, 
-            signInWithEmailAndPassword, 
-            signOut, 
-            onAuthStateChanged, 
-            signInAnonymously,
-            signInWithCustomToken,
-            getFirestore, 
-            doc, 
-            setDoc, 
-            onSnapshot, 
-            collection
+        window.Firebase = {
+            initializeApp,
+            getAuth,
+            signInWithEmailAndPassword,
+            signOut,
+            onAuthStateChanged,
+            setPersistence,
+            browserLocalPersistence,
+            getFirestore,
+            doc,
+            setDoc,
+            onSnapshot
         };
     </script>
 
@@ -55,7 +54,18 @@
 
     <script type="text/babel" data-type="module">
         const { useState, useEffect, useRef } = React;
-        
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAvcnSqaqsB91MZ62fwV9kufUiDd3mkRao",
+            authDomain: "project-timeline-e25e8.firebaseapp.com",
+            projectId: "project-timeline-e25e8",
+            storageBucket: "project-timeline-e25e8.firebasestorage.app",
+            messagingSenderId: "722630495823",
+            appId: "1:722630495823:web:68f72f9cd0225066bb243a",
+            measurementId: "G-7RCD2PHJV1"
+        };
+        const appDataId = 'rd-stage-gate-system';
+
         // --- Pre-loaded JSON Data (Backup) ---
         const INITIAL_PROJECTS_DATA = [
           {
@@ -172,7 +182,7 @@
         const LogOut = (props) => <IconBase {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>;
 
         // --- LOGIN COMPONENT ---
-        const LoginScreen = ({ onLogin, auth }) => {
+        const LoginScreen = ({ auth }) => {
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [error, setError] = useState('');
@@ -184,33 +194,19 @@
                 setError('');
                 
                 try {
-                    // Safety check: if auth object is not ready, simulate immediately
                     if (!auth) {
-                        throw new Error("Auth not ready");
+                        setError("Firebase is not ready. Please refresh and try again.");
+                        return;
                     }
-                    
-                    // Attempt real auth if config exists
-                    let authenticatedUser = null;
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                         const credential = await window.Firebase.signInWithCustomToken(auth, __initial_auth_token);
-                         authenticatedUser = credential.user;
-                    } else if (typeof __firebase_config !== 'undefined') {
-                         const credential = await window.Firebase.signInAnonymously(auth);
-                         authenticatedUser = credential.user;
-                    } else {
-                         throw new Error("No config");
-                    }
-                    if (onLogin && authenticatedUser) onLogin(authenticatedUser, password);
+                    await window.Firebase.setPersistence(auth, window.Firebase.browserLocalPersistence);
+                    await window.Firebase.signInWithEmailAndPassword(auth, email, password);
                 } catch (err) {
-                    console.warn("Auth fallback to simulation mode:", err);
-                    // Fallback to simulated login
-                    if (onLogin) {
-                        onLogin({
-                            email: email || 'demo@user.com',
-                            uid: 'simulated-user-id',
-                            isAnonymous: true
-                        }, password);
-                    }
+                    console.error("Login failed:", err);
+                    let message = "Login failed. Please check your email and password.";
+                    if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') message = "Email or password is incorrect.";
+                    if (err.code === 'auth/user-not-found') message = "This email has not been added to Firebase Authentication.";
+                    if (err.code === 'auth/too-many-requests') message = "Too many login attempts. Please try again later.";
+                    setError(message);
                 } finally {
                     setLoading(false);
                 }
@@ -229,7 +225,7 @@
                         <form onSubmit={handleLogin} className="space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800" placeholder="name@example.com" />
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800" placeholder="name@example.com" required />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
@@ -239,7 +235,7 @@
                             <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-200">
                                 {loading ? 'Signing In...' : 'Sign In'}
                             </button>
-                            <p className="text-center text-[10px] text-slate-400 mt-4">Demo Mode: Any email/password will work for preview.</p>
+                            <p className="text-center text-[10px] text-slate-400 mt-4">Use the email/password assigned in Firebase Authentication.</p>
                         </form>
                     </div>
                 </div>
@@ -362,7 +358,6 @@
             const [showTimelineAdjust, setShowTimelineAdjust] = useState(false);
             const [showHidden, setShowHidden] = useState(true);
             const [user, setUser] = useState(null);
-            const [sessionPassword, setSessionPassword] = useState('');
             // Initialize with your backup data
             const [projects, setProjects] = useState(INITIAL_PROJECTS_DATA);
             
@@ -371,48 +366,52 @@
             // --- FIREBASE AUTH & DATA SYNC ---
             const [db, setDb] = useState(null);
             const [auth, setAuth] = useState(null);
-            const [appId, setAppId] = useState('rd-stage-gate-system');
+            const [appId, setAppId] = useState(appDataId);
 
             useEffect(() => {
                 try {
-                   // SAFE INIT: Check if config exists before parsing to avoid white screen
-                   if (typeof __firebase_config !== 'undefined') {
-                       const config = JSON.parse(__firebase_config);
-                       const app = window.Firebase.initializeApp(config);
-                       const authInstance = window.Firebase.getAuth(app);
-                       const dbInstance = window.Firebase.getFirestore(app);
-                       const envAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                       
-                       setAuth(authInstance);
-                       setDb(dbInstance);
-                       setAppId(envAppId);
-                       
-                       const unsubscribe = window.Firebase.onAuthStateChanged(authInstance, (currentUser) => {
-                           if (currentUser) setUser(currentUser);
-                       });
-                       return unsubscribe;
-                   } else {
-                       console.warn("No firebase config found. Running in offline mode.");
-                   }
+                   const app = window.Firebase.initializeApp(firebaseConfig);
+                   const authInstance = window.Firebase.getAuth(app);
+                   const dbInstance = window.Firebase.getFirestore(app);
+
+                   setAuth(authInstance);
+                   setDb(dbInstance);
+                   setAppId(appDataId);
+
+                   const unsubscribe = window.Firebase.onAuthStateChanged(authInstance, (currentUser) => {
+                       setUser(currentUser);
+                   });
+                   return unsubscribe;
                 } catch(e) {
                     console.error("Firebase init failed:", e);
                 }
             }, []);
 
             useEffect(() => {
-                if (!user || !db || user.isAnonymous) return; 
-                
-                try {
-                   const docRef = window.Firebase.collection(db, 'artifacts', appId, 'public', 'data', 'projects');
-                } catch(e) { console.log("Firestore skipped for demo"); }
+                if (!user || !db) return;
+                const docRef = window.Firebase.doc(db, 'artifacts', appId, 'public', 'data', 'projects', 'main');
+                const unsubscribe = window.Firebase.onSnapshot(docRef, async (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (Array.isArray(data.list)) setProjects(data.list);
+                    } else {
+                        await window.Firebase.setDoc(docRef, { list: INITIAL_PROJECTS_DATA, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
+                    }
+                }, (err) => {
+                    console.error("Firestore sync error:", err);
+                    alert("Cannot sync project data from Firebase: " + err.message);
+                });
+                return unsubscribe;
             }, [user, db, appId]);
 
             const saveToCloud = async (newProjects) => {
-                if (!user || !db || user.isAnonymous) return;
+                if (!user || !db) return;
                 try {
-                    console.log("Saving to cloud...", newProjects);
+                    const docRef = window.Firebase.doc(db, 'artifacts', appId, 'public', 'data', 'projects', 'main');
+                    await window.Firebase.setDoc(docRef, { list: newProjects, updatedAt: new Date().toISOString(), updatedBy: user.email || user.uid });
                 } catch (e) {
                     console.error("Save failed:", e);
+                    alert("Save failed: " + e.message);
                 }
             };
 
@@ -421,12 +420,6 @@
                     if (auth) await window.Firebase.signOut(auth);
                 } catch(e) { console.log("Signout error", e); }
                 setUser(null);
-                setSessionPassword('');
-            };
-
-            const handleLogin = (loggedUser, password) => {
-                setUser(loggedUser);
-                setSessionPassword(password || '');
             };
             
             const [newProject, setNewProject] = useState({
@@ -462,15 +455,18 @@
             const updateProjectStatus = (id, status) => { const updated = projects.map(p => p.id === id ? { ...p, projectStatus: status } : p); setProjects(updated); saveToCloud(updated); };
             const toggleProjectVisibility = (id) => { const updated = projects.map(p => p.id === id ? { ...p, isVisible: p.isVisible === false ? true : false } : p); setProjects(updated); saveToCloud(updated); };
 
-            const handleCloseProject = () => {
+            const handleCloseProject = async () => {
                 if (!activeProject) return;
-                if (!sessionPassword) {
-                    alert("Cannot close project because this login session has no password recorded. Please sign out and sign in again with a password.");
+                if (!auth || !user?.email) {
+                    alert("Cannot verify password. Please sign out and sign in again.");
                     return;
                 }
                 const password = prompt(`Enter password to close "${activeProject.name}"`);
                 if (password === null) return;
-                if (password !== sessionPassword) {
+                try {
+                    await window.Firebase.signInWithEmailAndPassword(auth, user.email, password);
+                } catch (err) {
+                    console.error("Close password verification failed:", err);
                     alert("Incorrect password. Project was not closed.");
                     return;
                 }
@@ -920,7 +916,7 @@
                             <div><h1 className="text-4xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Stage-Gate Control</h1><p className="text-slate-500 font-bold mt-2 flex items-center gap-2"><span className="text-indigo-600 tracking-widest uppercase text-xs">Innovation Framework</span><span className="w-1 h-1 rounded-full bg-slate-300"></span><span>"Fail early, fail cheap, ไม่ fail ที่ลูกค้า"</span></p></div>
                             <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm"><div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-black text-xs shadow-inner">BZ</div><div><div className="text-sm font-black text-slate-800 leading-none">BENZ</div><div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">System Overseer</div></div></div>
                         </header>
-                        {user ? (activeTab === 'dashboard' ? <Dashboard /> : activeTab === 'projectLog' ? <ProjectLog /> : <ChecklistView />) : <LoginScreen auth={auth} onLogin={handleLogin} />}
+                        {user ? (activeTab === 'dashboard' ? <Dashboard /> : activeTab === 'projectLog' ? <ProjectLog /> : <ChecklistView />) : <LoginScreen auth={auth} />}
                     </main>
                     {showNewProjectModal && <NewProjectModal isOpen={showNewProjectModal} onClose={() => setShowNewProjectModal(false)} newProject={newProject} setNewProject={setNewProject} onCreate={handleCreateProject} />}
                     {showTimelineAdjust && <TimelineAdjustmentModal isOpen={showTimelineAdjust} onClose={() => setShowTimelineAdjust(false)} project={activeProject} onUpdate={handleUpdateTimeline} />}
