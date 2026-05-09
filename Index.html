@@ -65,6 +65,7 @@
             measurementId: "G-7RCD2PHJV1"
         };
         const appDataId = 'rd-stage-gate-system';
+        const TEAM_OPTIONS = ['main', 'team', 'team-a', 'team-b', 'team-c'];
 
         // --- Pre-loaded JSON Data (Backup) ---
         const INITIAL_PROJECTS_DATA = [
@@ -362,7 +363,6 @@
             const [userTeamId, setUserTeamId] = useState('');
             const [canAccessAllTeams, setCanAccessAllTeams] = useState(false);
             const [selectedTeamId, setSelectedTeamId] = useState('main');
-            const [adminTeamInput, setAdminTeamInput] = useState('main');
             // Initialize with your backup data
             const [projects, setProjects] = useState(INITIAL_PROJECTS_DATA);
             
@@ -394,13 +394,11 @@
                            setUserTeamId(claimTeamId);
                            setCanAccessAllTeams(claimAllTeams);
                            setSelectedTeamId(claimAllTeams ? selectedTeamId : claimTeamId);
-                           setAdminTeamInput(claimAllTeams ? selectedTeamId : claimTeamId);
                        } else {
                            setUserRole('unassigned');
                            setUserTeamId('');
                            setCanAccessAllTeams(false);
                            setSelectedTeamId('main');
-                           setAdminTeamInput('main');
                        }
                    });
                    return unsubscribe;
@@ -466,10 +464,8 @@
                 alert("This account is read-only. Please contact an admin if you need edit access.");
                 return false;
             };
-            const switchAdminTeam = () => {
+            const switchAdminTeam = (nextTeamId) => {
                 if (!canAccessAllTeams) return;
-                const nextTeamId = adminTeamInput.trim().toLowerCase();
-                if (!nextTeamId) return;
                 setSelectedTeamId(nextTeamId);
                 setActiveProjectId(null);
                 setActiveTab('dashboard');
@@ -728,7 +724,7 @@
                     </nav>
                     <div className="pt-4 border-t border-slate-800 space-y-1">
                         {user && <div className={`mx-4 mb-3 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border ${canEdit ? 'bg-green-500/10 text-green-300 border-green-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{userRole} access<div className="mt-1 text-[9px] text-slate-400 normal-case tracking-normal">Team: {activeTeamLabel || '-'}</div></div>}
-                        {canAccessAllTeams && <div className="mx-4 mb-3 space-y-2"><label className="block text-[9px] font-black uppercase tracking-widest text-slate-500">Admin Team</label><div className="flex gap-1"><input value={adminTeamInput} onChange={(e) => setAdminTeamInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') switchAdminTeam(); }} className="min-w-0 flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-indigo-500" placeholder="team-a" /><button onClick={switchAdminTeam} className="px-2 py-1.5 rounded-lg bg-indigo-600 text-white text-[10px] font-black uppercase">Go</button></div></div>}
+                        {canAccessAllTeams && <div className="mx-4 mb-3 space-y-2"><label className="block text-[9px] font-black uppercase tracking-widest text-slate-500">Admin Team</label><select value={selectedTeamId} onChange={(e) => switchAdminTeam(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer">{TEAM_OPTIONS.map(teamId => <option key={teamId} value={teamId}>{teamId}</option>)}</select></div>}
                         <button onClick={handleExportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Download size={14} /> Backup Data</button>
                         {canEdit && <button onClick={triggerImportData} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-slate-400 text-xs"><Upload size={14} /> Restore Data</button>}
                         {user && <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-red-900/20 text-red-400 text-xs mt-4"><LogOut size={14} /> Sign Out ({user.email || 'Guest'})</button>}
